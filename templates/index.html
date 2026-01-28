@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klipper UI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖨️ Klipper Printer Control</h1>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Printer Status Panel -->
+            <section class="panel status-panel">
+                <h2>Printer Status</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <label>State:</label>
+                        <span id="printerState">-</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Print Progress:</label>
+                        <span id="printProgress">-</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Print Time:</label>
+                        <span id="printTime">-</span>
+                    </div>
+                    <div class="status-item">
+                        <label>File:</label>
+                        <span id="currentFile">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Temperature Control -->
+            <section class="panel temperature-panel">
+                <h2>Temperature Control</h2>
+                <div class="temp-controls">
+                    <div class="temp-control">
+                        <label>Hotend:</label>
+                        <div class="temp-display">
+                            <span id="hotendTemp">0</span>°C / <span id="hotendTarget">0</span>°C
+                        </div>
+                        <div class="temp-input-group">
+                            <input type="number" id="hotendTargetInput" placeholder="Target" min="0" max="300">
+                            <button onclick="setTemperature('extruder', 'hotendTargetInput')">Set</button>
+                        </div>
+                    </div>
+                    <div class="temp-control">
+                        <label>Bed:</label>
+                        <div class="temp-display">
+                            <span id="bedTemp">0</span>°C / <span id="bedTarget">0</span>°C
+                        </div>
+                        <div class="temp-input-group">
+                            <input type="number" id="bedTargetInput" placeholder="Target" min="0" max="150">
+                            <button onclick="setTemperature('heater_bed', 'bedTargetInput')">Set</button>
+                        </div>
+                    </div>
+                    <div class="temp-control">
+                        <label>Fan Speed:</label>
+                        <div class="temp-display">
+                            <span id="fanSpeed">0</span>%
+                        </div>
+                        <div class="temp-input-group">
+                            <input type="range" id="fanSpeedInput" min="0" max="100" value="0" oninput="updateFanDisplay(this.value)">
+                            <span id="fanSpeedDisplay">0%</span>
+                            <button onclick="setFanSpeed()">Set</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Printer Control -->
+            <section class="panel control-panel">
+                <h2>Printer Control</h2>
+                <div class="control-buttons">
+                    <button class="btn btn-primary" onclick="homePrinter('XYZ')">Home All</button>
+                    <button class="btn btn-primary" onclick="homePrinter('X')">Home X</button>
+                    <button class="btn btn-primary" onclick="homePrinter('Y')">Home Y</button>
+                    <button class="btn btn-primary" onclick="homePrinter('Z')">Home Z</button>
+                    <button class="btn btn-danger" onclick="emergencyStop()">Emergency Stop</button>
+                </div>
+                <div class="movement-controls">
+                    <h3>Movement</h3>
+                    <div class="movement-grid">
+                        <div class="movement-axis">
+                            <label>X:</label>
+                            <div class="axis-controls">
+                                <button class="btn-small" onclick="moveRelative('X', -10)">-10</button>
+                                <button class="btn-small" onclick="moveRelative('X', -1)">-1</button>
+                                <input type="number" id="xMove" placeholder="mm" step="0.1">
+                                <button class="btn-small" onclick="moveRelative('X', 1)">+1</button>
+                                <button class="btn-small" onclick="moveRelative('X', 10)">+10</button>
+                            </div>
+                        </div>
+                        <div class="movement-axis">
+                            <label>Y:</label>
+                            <div class="axis-controls">
+                                <button class="btn-small" onclick="moveRelative('Y', -10)">-10</button>
+                                <button class="btn-small" onclick="moveRelative('Y', -1)">-1</button>
+                                <input type="number" id="yMove" placeholder="mm" step="0.1">
+                                <button class="btn-small" onclick="moveRelative('Y', 1)">+1</button>
+                                <button class="btn-small" onclick="moveRelative('Y', 10)">+10</button>
+                            </div>
+                        </div>
+                        <div class="movement-axis">
+                            <label>Z:</label>
+                            <div class="axis-controls">
+                                <button class="btn-small" onclick="moveRelative('Z', -10)">-10</button>
+                                <button class="btn-small" onclick="moveRelative('Z', -1)">-1</button>
+                                <input type="number" id="zMove" placeholder="mm" step="0.1">
+                                <button class="btn-small" onclick="moveRelative('Z', 1)">+1</button>
+                                <button class="btn-small" onclick="moveRelative('Z', 10)">+10</button>
+                            </div>
+                        </div>
+                        <div class="movement-axis">
+                            <label>E (Extrude):</label>
+                            <div class="axis-controls">
+                                <button class="btn-small" onclick="moveRelative('E', -5)">-5</button>
+                                <button class="btn-small" onclick="moveRelative('E', -1)">-1</button>
+                                <input type="number" id="eMove" placeholder="mm" step="0.1">
+                                <button class="btn-small" onclick="moveRelative('E', 1)">+1</button>
+                                <button class="btn-small" onclick="moveRelative('E', 5)">+5</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="speed-control">
+                        <label>Speed (mm/s):</label>
+                        <input type="number" id="moveSpeed" value="100" min="1" max="1000">
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Management -->
+            <section class="panel file-panel">
+                <h2>File Management</h2>
+                <div class="file-actions">
+                    <input type="file" id="fileInput" accept=".gcode,.g" style="display: none;" onchange="uploadFile()">
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Upload File</button>
+                    <button class="btn btn-secondary" onclick="loadFileList()">Refresh</button>
+                </div>
+                <div class="file-list" id="fileList">
+                    <p>Loading files...</p>
+                </div>
+            </section>
+
+            <!-- Print Control -->
+            <section class="panel print-panel" id="printPanel" style="display: none;">
+                <h2>Print Control</h2>
+                <div class="print-controls">
+                    <button class="btn btn-success" onclick="resumePrint()">Resume</button>
+                    <button class="btn btn-warning" onclick="pausePrint()">Pause</button>
+                    <button class="btn btn-danger" onclick="cancelPrint()">Cancel</button>
+                </div>
+            </section>
+
+            <!-- G-code Console -->
+            <section class="panel console-panel">
+                <h2>G-code Console</h2>
+                <div class="console-output" id="consoleOutput"></div>
+                <div class="console-input">
+                    <input type="text" id="gcodeInput" placeholder="Enter G-code command..." onkeypress="handleGcodeKeyPress(event)">
+                    <button onclick="sendGcode()">Send</button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
