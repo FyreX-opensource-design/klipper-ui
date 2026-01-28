@@ -21,15 +21,19 @@ async function loadPrinterConfig() {
             console.error('Error loading printer config:', result.error);
             document.getElementById('tempControls').innerHTML = 
                 `<p style="color: red;">Error loading printer configuration: ${result.error}</p>`;
+            updateConnectionStatus(false);
             return;
         }
         
         printerConfig = result.result || result;
         generateTemperatureControls();
+        // Don't set Connected here - config can be empty when Moonraker is unreachable.
+        // Connection status is set from status_update responses.
     } catch (error) {
         console.error('Error loading printer config:', error);
         document.getElementById('tempControls').innerHTML = 
             `<p style="color: red;">Failed to load printer configuration</p>`;
+        updateConnectionStatus(false);
     }
 }
 
@@ -125,9 +129,10 @@ function getFanDisplayName(fan) {
     return fan.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-// Connection status
+// Connection status reflects PRINTER (Moonraker) connectivity, not Socket.IO to our server
 socket.on('connect', () => {
-    updateConnectionStatus(true);
+    // Don't set Connected here - we're only connected to our Flask app.
+    // Request status; we'll set Connected/Disconnected when we get the response.
     requestStatus();
 });
 
@@ -137,24 +142,31 @@ socket.on('disconnect', () => {
 
 socket.on('status_update', (data) => {
     updatePrinterStatus(data);
+    // Update connection indicator based on whether we got valid printer data
+    if (data && data.error) {
+        updateConnectionStatus(false);
+    } else if (data && data.result && data.result.status) {
+        updateConnectionStatus(true);
+    }
 });
 
 socket.on('error', (data) => {
     console.error('Socket error:', data);
     addConsoleMessage(`Error: ${data.message}`, 'error');
+    updateConnectionStatus(false);
 });
 
-// Update connection status indicator
+// Update connection status indicator (printer/Moonraker connectivity)
 function updateConnectionStatus(connected) {
     const indicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
     
     if (connected) {
         indicator.className = 'status-indicator connected';
-        statusText.textContent = 'Connected';
+        statusText.textContent = 'Printer connected';
     } else {
         indicator.className = 'status-indicator disconnected';
-        statusText.textContent = 'Disconnected';
+        statusText.textContent = 'Printer disconnected';
     }
 }
 
@@ -166,7 +178,9 @@ function requestStatus() {
 // Update printer status display
 function updatePrinterStatus(data) {
     if (!data || data.error) {
-        console.error('Status update error:', data);
+        if (data && data.error) {
+            console.error('Status update error:', data.error);
+        }
         return;
     }
 
