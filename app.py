@@ -51,14 +51,102 @@ class MoonrakerClient:
         """Get current printer status"""
         return self._request('GET', '/printer/status')
     
-    def get_printer_objects(self, objects=None):
-        """Get printer objects status"""
-        if objects is None:
-            objects = [
+    def get_available_objects(self):
+        """Get list of all available printer objects"""
+        return self._request('GET', '/printer/objects/list')
+    
+    def get_printer_config(self):
+        """Get printer configuration and available hardware"""
+        # Get list of available objects
+        objects_result = self.get_available_objects()
+        if objects_result.get('error'):
+            logger.warning(f"Could not get printer objects list: {objects_result.get('error')}")
+            # Return empty config if we can't get the list
+            return {
+                'heaters': [],
+                'fans': [],
+                'extruders': [],
+                'temperature_sensors': [],
+                'all_objects': []
+            }
+        
+        # Moonraker returns objects in result.objects array
+        available_objects = objects_result.get('result', {}).get('objects', [])
+        if not available_objects:
+            # Fallback: try to query common objects directly
+            logger.info("No objects from list, trying direct query")
+            fallback_objects = [
                 "heater_bed", "extruder", "fan", "temperature_sensor",
                 "motion_report", "display_status", "virtual_sdcard",
                 "print_stats", "toolhead", "gcode_move"
             ]
+            params = {'objects': ','.join(fallback_objects)}
+            status_result = self._request('GET', '/printer/objects/query', params=params)
+            if status_result.get('result') and status_result['result'].get('status'):
+                available_objects = list(status_result['result']['status'].keys())
+        
+        # Filter for heaters, fans, and extruders
+        heaters = []
+        fans = []
+        extruders = []
+        temperature_sensors = []
+        
+        for obj in available_objects:
+            # Handle heater_bed
+            if obj == 'heater_bed' or obj.startswith('heater_bed '):
+                heaters.append(obj)
+            # Handle extruders (they are heaters too)
+            elif obj.startswith('extruder'):
+                extruders.append(obj)
+                heaters.append(obj)  # Extruders are also heaters
+            # Handle generic heaters
+            elif obj.startswith('heater_generic'):
+                heaters.append(obj)
+            # Handle fans
+            elif (obj.startswith('fan ') or obj == 'fan' or 
+                  obj.startswith('controller_fan') or 
+                  obj.startswith('heater_fan')):
+                fans.append(obj)
+            # Handle temperature sensors
+            elif obj.startswith('temperature_sensor'):
+                temperature_sensors.append(obj)
+        
+        # Remove duplicates while preserving order
+        heaters = sorted(list(dict.fromkeys(heaters)))
+        fans = sorted(list(dict.fromkeys(fans)))
+        extruders = sorted(list(dict.fromkeys(extruders)))
+        temperature_sensors = sorted(list(dict.fromkeys(temperature_sensors)))
+        
+        return {
+            'heaters': heaters,
+            'fans': fans,
+            'extruders': extruders,
+            'temperature_sensors': temperature_sensors,
+            'all_objects': available_objects
+        }
+    
+    def get_printer_objects(self, objects=None):
+        """Get printer objects status"""
+        if objects is None:
+            # First try to get available objects, fall back to defaults
+            config = self.get_printer_config()
+            if not config.get('error'):
+                # Build object list from detected hardware
+                objects = []
+                objects.extend(config.get('heaters', []))
+                objects.extend(config.get('fans', []))
+                objects.extend(config.get('temperature_sensors', []))
+                objects.extend([
+                    "motion_report", "display_status", "virtual_sdcard",
+                    "print_stats", "toolhead", "gcode_move"
+                ])
+            else:
+                # Fallback to defaults
+                objects = [
+                    "heater_bed", "extruder", "fan", "temperature_sensor",
+                    "motion_report", "display_status", "virtual_sdcard",
+                    "print_stats", "toolhead", "gcode_move"
+                ]
         params = {'objects': ','.join(objects)}
         return self._request('GET', '/printer/objects/query', params=params)
     
@@ -163,6 +251,13 @@ def index():
 def printer_info():
     """Get printer information"""
     return jsonify(moonraker.get_printer_info())
+
+
+@app.route('/api/printer/config')
+def printer_config():
+    """Get printer configuration (available heaters, fans, etc.)"""
+    result = moonraker.get_printer_config()
+    return jsonify(result)
 
 
 @app.route('/api/printer/status')

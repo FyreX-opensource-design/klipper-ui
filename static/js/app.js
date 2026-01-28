@@ -4,6 +4,127 @@ const socket = io();
 // API base URL
 const API_BASE = '';
 
+// Store printer configuration
+let printerConfig = {
+    heaters: [],
+    fans: [],
+    extruders: []
+};
+
+// Load printer configuration and generate UI
+async function loadPrinterConfig() {
+    try {
+        const response = await fetch(`${API_BASE}/api/printer/config`);
+        const result = await response.json();
+        
+        if (result.error) {
+            console.error('Error loading printer config:', result.error);
+            document.getElementById('tempControls').innerHTML = 
+                `<p style="color: red;">Error loading printer configuration: ${result.error}</p>`;
+            return;
+        }
+        
+        printerConfig = result.result || result;
+        generateTemperatureControls();
+    } catch (error) {
+        console.error('Error loading printer config:', error);
+        document.getElementById('tempControls').innerHTML = 
+            `<p style="color: red;">Failed to load printer configuration</p>`;
+    }
+}
+
+// Generate temperature and fan controls dynamically
+function generateTemperatureControls() {
+    const container = document.getElementById('tempControls');
+    let html = '';
+    
+    // Generate heater controls
+    if (printerConfig.heaters && printerConfig.heaters.length > 0) {
+        printerConfig.heaters.forEach(heater => {
+            const heaterId = heater.replace(/[^a-zA-Z0-9]/g, '_');
+            const displayName = getHeaterDisplayName(heater);
+            const maxTemp = heater.includes('bed') ? 150 : 300;
+            
+            html += `
+                <div class="temp-control" data-heater="${heater}">
+                    <label>${displayName}:</label>
+                    <div class="temp-display">
+                        <span id="temp_${heaterId}">0</span>°C / <span id="target_${heaterId}">0</span>°C
+                    </div>
+                    <div class="temp-input-group">
+                        <input type="number" id="input_${heaterId}" placeholder="Target" min="0" max="${maxTemp}">
+                        <button onclick="setTemperature('${heater}', 'input_${heaterId}')">Set</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    // Generate fan controls
+    if (printerConfig.fans && printerConfig.fans.length > 0) {
+        printerConfig.fans.forEach(fan => {
+            const fanId = fan.replace(/[^a-zA-Z0-9]/g, '_');
+            const displayName = getFanDisplayName(fan);
+            
+            html += `
+                <div class="temp-control" data-fan="${fan}">
+                    <label>${displayName}:</label>
+                    <div class="temp-display">
+                        <span id="fan_${fanId}">0</span>%
+                    </div>
+                    <div class="temp-input-group">
+                        <input type="range" id="fanInput_${fanId}" min="0" max="100" value="0" 
+                               oninput="updateFanDisplay('${fan}', this.value)">
+                        <span id="fanDisplay_${fanId}">0%</span>
+                        <button onclick="setFanSpeed('${fan}', 'fanInput_${fanId}')">Set</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    if (!html) {
+        html = '<p>No heaters or fans detected. Check printer connection.</p>';
+    }
+    
+    container.innerHTML = html;
+}
+
+// Get display name for heater
+function getHeaterDisplayName(heater) {
+    if (heater === 'heater_bed') return 'Bed';
+    if (heater.startsWith('extruder')) {
+        const match = heater.match(/extruder(\d+)/);
+        if (match) {
+            return `Extruder ${parseInt(match[1]) + 1}`;
+        }
+        return 'Extruder';
+    }
+    if (heater.startsWith('heater_generic')) {
+        const match = heater.match(/heater_generic\s+(\w+)/);
+        if (match) {
+            return match[1].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+        return heater.replace(/heater_generic\s+/, '').replace(/_/g, ' ');
+    }
+    return heater.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// Get display name for fan
+function getFanDisplayName(fan) {
+    if (fan === 'fan') return 'Fan';
+    if (fan.startsWith('fan')) {
+        const match = fan.match(/fan(\d+)/);
+        if (match) {
+            return `Fan ${parseInt(match[1]) + 1}`;
+        }
+        return fan.replace(/fan/, 'Fan ').replace(/_/g, ' ');
+    }
+    if (fan.includes('controller_fan')) return 'Controller Fan';
+    if (fan.includes('heater_fan')) return 'Heater Fan';
+    return fan.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
 // Connection status
 socket.on('connect', () => {
     updateConnectionStatus(true);
@@ -84,28 +205,50 @@ function updatePrinterStatus(data) {
             }
         }
         
-        // Temperature updates
-        if (status.extruder) {
-            const extruder = status.extruder;
-            document.getElementById('hotendTemp').textContent = 
-                Math.round(extruder.temperature || 0);
-            document.getElementById('hotendTarget').textContent = 
-                Math.round(extruder.target || 0);
+        // Temperature updates - handle all heaters dynamically
+        if (printerConfig.heaters) {
+            printerConfig.heaters.forEach(heater => {
+                if (status[heater]) {
+                    const heaterData = status[heater];
+                    const heaterId = heater.replace(/[^a-zA-Z0-9]/g, '_');
+                    const tempElement = document.getElementById(`temp_${heaterId}`);
+                    const targetElement = document.getElementById(`target_${heaterId}`);
+                    
+                    if (tempElement) {
+                        tempElement.textContent = Math.round(heaterData.temperature || 0);
+                    }
+                    if (targetElement) {
+                        targetElement.textContent = Math.round(heaterData.target || 0);
+                    }
+                }
+            });
         }
         
-        if (status.heater_bed) {
-            const bed = status.heater_bed;
-            document.getElementById('bedTemp').textContent = 
-                Math.round(bed.temperature || 0);
-            document.getElementById('bedTarget').textContent = 
-                Math.round(bed.target || 0);
-        }
-        
-        // Fan speed
-        if (status.fan) {
-            const fanSpeed = status.fan.speed || 0;
-            const fanPercent = Math.round(fanSpeed * 100);
-            document.getElementById('fanSpeed').textContent = fanPercent;
+        // Fan speed updates - handle all fans dynamically
+        if (printerConfig.fans) {
+            printerConfig.fans.forEach(fan => {
+                if (status[fan]) {
+                    const fanData = status[fan];
+                    const fanId = fan.replace(/[^a-zA-Z0-9]/g, '_');
+                    const fanElement = document.getElementById(`fan_${fanId}`);
+                    const fanDisplayElement = document.getElementById(`fanDisplay_${fanId}`);
+                    
+                    // Fan speed can be 0-1 or 0-255, normalize to percentage
+                    let fanSpeed = fanData.speed || 0;
+                    if (fanSpeed > 1) {
+                        fanSpeed = fanSpeed / 255;
+                    }
+                    const fanPercent = Math.round(fanSpeed * 100);
+                    
+                    if (fanElement) {
+                        fanElement.textContent = fanPercent;
+                    }
+                    if (fanDisplayElement && document.getElementById(`fanInput_${fanId}`)) {
+                        document.getElementById(`fanInput_${fanId}`).value = fanPercent;
+                        fanDisplayElement.textContent = `${fanPercent}%`;
+                    }
+                }
+            });
         }
     }
 }
@@ -141,26 +284,31 @@ async function setTemperature(heater, inputId) {
 }
 
 // Set fan speed
-function updateFanDisplay(value) {
-    document.getElementById('fanSpeedDisplay').textContent = `${value}%`;
+function updateFanDisplay(fan, value) {
+    const fanId = fan.replace(/[^a-zA-Z0-9]/g, '_');
+    const displayElement = document.getElementById(`fanDisplay_${fanId}`);
+    if (displayElement) {
+        displayElement.textContent = `${value}%`;
+    }
 }
 
-async function setFanSpeed() {
-    const speed = parseInt(document.getElementById('fanSpeedInput').value);
+async function setFanSpeed(fan, inputId) {
+    const input = document.getElementById(inputId);
+    const speed = parseInt(input.value);
     const speedValue = speed / 100; // Convert to 0-1 range
     
     try {
         const response = await fetch(`${API_BASE}/api/printer/fan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fan: 'fan', speed: Math.round(speedValue * 255) })
+            body: JSON.stringify({ fan: fan, speed: Math.round(speedValue * 255) })
         });
         
         const result = await response.json();
         if (result.error) {
             alert(`Error: ${result.error}`);
         } else {
-            addConsoleMessage(`Set fan speed to ${speed}%`, 'command');
+            addConsoleMessage(`Set ${getFanDisplayName(fan)} speed to ${speed}%`, 'command');
             setTimeout(requestStatus, 500);
         }
     } catch (error) {
@@ -467,8 +615,10 @@ function handleGcodeKeyPress(event) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    loadFileList();
-    // Request status updates every 2 seconds
-    setInterval(requestStatus, 2000);
-    addConsoleMessage('Klipper UI initialized', 'response');
+    loadPrinterConfig().then(() => {
+        loadFileList();
+        // Request status updates every 2 seconds
+        setInterval(requestStatus, 2000);
+        addConsoleMessage('Klipper UI initialized', 'response');
+    });
 });

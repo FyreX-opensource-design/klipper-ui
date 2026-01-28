@@ -44,38 +44,8 @@
             <!-- Temperature Control -->
             <section class="panel temperature-panel">
                 <h2>Temperature Control</h2>
-                <div class="temp-controls">
-                    <div class="temp-control">
-                        <label>Hotend:</label>
-                        <div class="temp-display">
-                            <span id="hotendTemp">0</span>°C / <span id="hotendTarget">0</span>°C
-                        </div>
-                        <div class="temp-input-group">
-                            <input type="number" id="hotendTargetInput" placeholder="Target" min="0" max="300">
-                            <button onclick="setTemperature('extruder', 'hotendTargetInput')">Set</button>
-                        </div>
-                    </div>
-                    <div class="temp-control">
-                        <label>Bed:</label>
-                        <div class="temp-display">
-                            <span id="bedTemp">0</span>°C / <span id="bedTarget">0</span>°C
-                        </div>
-                        <div class="temp-input-group">
-                            <input type="number" id="bedTargetInput" placeholder="Target" min="0" max="150">
-                            <button onclick="setTemperature('heater_bed', 'bedTargetInput')">Set</button>
-                        </div>
-                    </div>
-                    <div class="temp-control">
-                        <label>Fan Speed:</label>
-                        <div class="temp-display">
-                            <span id="fanSpeed">0</span>%
-                        </div>
-                        <div class="temp-input-group">
-                            <input type="range" id="fanSpeedInput" min="0" max="100" value="0" oninput="updateFanDisplay(this.value)">
-                            <span id="fanSpeedDisplay">0%</span>
-                            <button onclick="setFanSpeed()">Set</button>
-                        </div>
-                    </div>
+                <div class="temp-controls" id="tempControls">
+                    <p>Loading printer configuration...</p>
                 </div>
             </section>
 
