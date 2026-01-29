@@ -364,21 +364,17 @@ async function checkPrinterErrors() {
                 errorSection.style.display = 'none';
             }
         } else if (result.error) {
-            // Connection error or other API error
-            errorSection.style.display = 'block';
-            errorMessage.textContent = `Connection Error: ${result.error}`;
-            errorMessage.className = 'error-message';
+            // Connection/API error - don't show in Printer Error box; connection status is in header
+            errorSection.style.display = 'none';
         } else {
             errorSection.style.display = 'none';
         }
     } catch (error) {
         console.error('Error checking printer status:', error);
+        // Don't show connection/fetch errors in Printer Error box
         const errorSection = document.getElementById('errorSection');
-        const errorMessage = document.getElementById('errorMessage');
-        if (errorSection && errorMessage) {
-            errorSection.style.display = 'block';
-            errorMessage.textContent = `Failed to check printer status: ${error.message}`;
-            errorMessage.className = 'error-message';
+        if (errorSection) {
+            errorSection.style.display = 'none';
         }
     }
 }
@@ -388,13 +384,10 @@ function updatePrinterStatus(data) {
     if (!data || data.error) {
         if (data && data.error) {
             console.error('Status update error:', data.error);
-            // Show error if we can't get status
+            // Don't show connection/status errors in Printer Error box; connection status is in header
             const errorSection = document.getElementById('errorSection');
-            const errorMessage = document.getElementById('errorMessage');
-            if (errorSection && errorMessage) {
-                errorSection.style.display = 'block';
-                errorMessage.textContent = `Status Error: ${data.error}`;
-                errorMessage.className = 'error-message';
+            if (errorSection) {
+                errorSection.style.display = 'none';
             }
         }
         // Still try to check printer info for errors
@@ -982,7 +975,7 @@ async function loadFileList() {
         const result = await response.json();
         
         if (result.error) {
-            fileList.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
+            fileList.innerHTML = '<p style="color: #94a3b8;">Unable to load files. Check printer connection.</p>';
             return;
         }
         
@@ -1008,7 +1001,7 @@ async function loadFileList() {
             }).join('');
     } catch (error) {
         console.error('Error loading files:', error);
-        fileList.innerHTML = '<p style="color: red;">Failed to load files</p>';
+        fileList.innerHTML = '<p style="color: #94a3b8;">Unable to load files. Check printer connection.</p>';
     }
 }
 
@@ -1264,7 +1257,7 @@ async function loadQueue() {
         const result = await response.json();
         
         if (result.error) {
-            container.innerHTML = `<p style="color: red;">Error loading queue: ${result.error}</p>`;
+            container.innerHTML = '<p style="color: #94a3b8;">Unable to load queue. Check printer connection.</p>';
             return;
         }
         
@@ -1291,7 +1284,7 @@ async function loadQueue() {
         container.innerHTML = html;
     } catch (error) {
         console.error('Error loading queue:', error);
-        container.innerHTML = '<p style="color: red;">Failed to load queue</p>';
+        container.innerHTML = '<p style="color: #94a3b8;">Unable to load queue. Check printer connection.</p>';
     }
 }
 
