@@ -4,3 +4,4 @@ requests==2.31.0
 websocket-client==1.6.4
 python-socketio==5.10.0
 eventlet==0.33.3; sys_platform != 'win32'
+python_dotenv

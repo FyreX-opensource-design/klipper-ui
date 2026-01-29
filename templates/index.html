@@ -49,6 +49,14 @@
                 </div>
             </section>
 
+            <!-- Fan Control -->
+            <section class="panel fan-panel">
+                <h2>Fan Control</h2>
+                <div class="fan-controls" id="fanControls">
+                    <p>Loading printer configuration...</p>
+                </div>
+            </section>
+
             <!-- Printer Control -->
             <section class="panel control-panel">
                 <h2>Printer Control</h2>
@@ -59,17 +67,97 @@
                     <button class="btn btn-primary" onclick="homePrinter('Z')">Home Z</button>
                     <button class="btn btn-danger" onclick="emergencyStop()">Emergency Stop</button>
                 </div>
+                <div class="printer-status-indicators">
+                    <h3>Status</h3>
+                    <div class="status-indicators-grid">
+                        <div class="status-indicator-item">
+                            <label>X Axis:</label>
+                            <span class="status-badge" id="axisStatusX">
+                                <span class="status-dot" id="axisDotX"></span>
+                                <span id="axisTextX">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item">
+                            <label>Y Axis:</label>
+                            <span class="status-badge" id="axisStatusY">
+                                <span class="status-dot" id="axisDotY"></span>
+                                <span id="axisTextY">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item">
+                            <label>Z Axis:</label>
+                            <span class="status-badge" id="axisStatusZ">
+                                <span class="status-dot" id="axisDotZ"></span>
+                                <span id="axisTextZ">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item" id="qglStatusItem" style="display: none;">
+                            <label>QGL:</label>
+                            <span class="status-badge" id="qglStatus">
+                                <span class="status-dot" id="qglDot"></span>
+                                <span id="qglText">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item" id="zTiltStatusItem" style="display: none;">
+                            <label>Z-Tilt:</label>
+                            <span class="status-badge" id="zTiltStatus">
+                                <span class="status-dot" id="zTiltDot"></span>
+                                <span id="zTiltText">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item">
+                            <label>Coordinate Mode:</label>
+                            <span class="status-badge" id="coordinateMode">
+                                <span id="coordinateModeText">Unknown</span>
+                            </span>
+                        </div>
+                        <div class="status-indicator-item" id="toolSelectionItem" style="display: none;">
+                            <label>Active Tool:</label>
+                            <span class="status-badge" id="toolStatus">
+                                <span id="toolText">Unknown</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="tool-selection" id="toolSelectionSection" style="display: none;">
+                    <h3>Tool Selection</h3>
+                    <div class="tool-buttons" id="toolButtons">
+                        <!-- Tool buttons will be generated dynamically -->
+                    </div>
+                </div>
+                <div class="position-display">
+                    <h3>Current Position</h3>
+                    <div class="position-grid">
+                        <div class="position-item">
+                            <label>X:</label>
+                            <span id="positionX">-</span> mm
+                        </div>
+                        <div class="position-item">
+                            <label>Y:</label>
+                            <span id="positionY">-</span> mm
+                        </div>
+                        <div class="position-item">
+                            <label>Z:</label>
+                            <span id="positionZ">-</span> mm
+                        </div>
+                    </div>
+                </div>
                 <div class="movement-controls">
                     <h3>Movement</h3>
+                    <div class="movement-mode-toggle">
+                        <button class="btn btn-small" id="relativeModeBtn" onclick="setMovementMode('relative')">Relative</button>
+                        <button class="btn btn-small" id="absoluteModeBtn" onclick="setMovementMode('absolute')">Absolute</button>
+                    </div>
                     <div class="movement-grid">
                         <div class="movement-axis">
                             <label>X:</label>
                             <div class="axis-controls">
                                 <button class="btn-small" onclick="moveRelative('X', -10)">-10</button>
                                 <button class="btn-small" onclick="moveRelative('X', -1)">-1</button>
-                                <input type="number" id="xMove" placeholder="mm" step="0.1">
+                                <input type="number" id="xMove" placeholder="mm" step="0.1" onkeypress="handleMoveKeyPress(event, 'X')">
                                 <button class="btn-small" onclick="moveRelative('X', 1)">+1</button>
                                 <button class="btn-small" onclick="moveRelative('X', 10)">+10</button>
+                                <button class="btn-small btn-success" onclick="moveToPosition('X')">Go</button>
                             </div>
                         </div>
                         <div class="movement-axis">
@@ -77,9 +165,10 @@
                             <div class="axis-controls">
                                 <button class="btn-small" onclick="moveRelative('Y', -10)">-10</button>
                                 <button class="btn-small" onclick="moveRelative('Y', -1)">-1</button>
-                                <input type="number" id="yMove" placeholder="mm" step="0.1">
+                                <input type="number" id="yMove" placeholder="mm" step="0.1" onkeypress="handleMoveKeyPress(event, 'Y')">
                                 <button class="btn-small" onclick="moveRelative('Y', 1)">+1</button>
                                 <button class="btn-small" onclick="moveRelative('Y', 10)">+10</button>
+                                <button class="btn-small btn-success" onclick="moveToPosition('Y')">Go</button>
                             </div>
                         </div>
                         <div class="movement-axis">
@@ -87,9 +176,10 @@
                             <div class="axis-controls">
                                 <button class="btn-small" onclick="moveRelative('Z', -10)">-10</button>
                                 <button class="btn-small" onclick="moveRelative('Z', -1)">-1</button>
-                                <input type="number" id="zMove" placeholder="mm" step="0.1">
+                                <input type="number" id="zMove" placeholder="mm" step="0.1" onkeypress="handleMoveKeyPress(event, 'Z')">
                                 <button class="btn-small" onclick="moveRelative('Z', 1)">+1</button>
                                 <button class="btn-small" onclick="moveRelative('Z', 10)">+10</button>
+                                <button class="btn-small btn-success" onclick="moveToPosition('Z')">Go</button>
                             </div>
                         </div>
                         <div class="movement-axis">
@@ -97,9 +187,10 @@
                             <div class="axis-controls">
                                 <button class="btn-small" onclick="moveRelative('E', -5)">-5</button>
                                 <button class="btn-small" onclick="moveRelative('E', -1)">-1</button>
-                                <input type="number" id="eMove" placeholder="mm" step="0.1">
+                                <input type="number" id="eMove" placeholder="mm" step="0.1" onkeypress="handleMoveKeyPress(event, 'E')">
                                 <button class="btn-small" onclick="moveRelative('E', 1)">+1</button>
                                 <button class="btn-small" onclick="moveRelative('E', 5)">+5</button>
+                                <button class="btn-small btn-success" onclick="moveToPosition('E')">Go</button>
                             </div>
                         </div>
                     </div>
@@ -136,6 +227,12 @@
             <!-- G-code Console -->
             <section class="panel console-panel">
                 <h2>G-code Console</h2>
+                <div class="macros-section" id="macrosSection">
+                    <h3>Macros</h3>
+                    <div class="macros-container" id="macrosContainer">
+                        <p>Loading macros...</p>
+                    </div>
+                </div>
                 <div class="console-output" id="consoleOutput"></div>
                 <div class="console-input">
                     <input type="text" id="gcodeInput" placeholder="Enter G-code command..." onkeypress="handleGcodeKeyPress(event)">

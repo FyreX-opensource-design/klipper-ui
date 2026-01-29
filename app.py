@@ -31,6 +31,10 @@ class MoonrakerClient:
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
         self.session.timeout = 5
+        # Increase connection pool size to avoid warnings
+        adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
     
     def _request(self, method, endpoint, **kwargs):
         """Make HTTP request to Moonraker"""
@@ -90,6 +94,8 @@ class MoonrakerClient:
         fans = []
         extruders = []
         temperature_sensors = []
+        qgl_object = None
+        z_tilt_object = None
         
         for obj in available_objects:
             # Handle heater_bed
@@ -102,14 +108,20 @@ class MoonrakerClient:
             # Handle generic heaters
             elif obj.startswith('heater_generic'):
                 heaters.append(obj)
-            # Handle fans
+            # Handle fans (fan, fan_generic are user-controllable; heater_fan and controller_fan are automatic)
             elif (obj.startswith('fan ') or obj == 'fan' or 
+                  obj.startswith('fan_generic') or
                   obj.startswith('controller_fan') or 
                   obj.startswith('heater_fan')):
                 fans.append(obj)
             # Handle temperature sensors
             elif obj.startswith('temperature_sensor'):
                 temperature_sensors.append(obj)
+            # Handle QGL/Z_TILT objects
+            elif obj.startswith('quad_gantry_level'):
+                qgl_object = obj
+            elif obj.startswith('z_tilt'):
+                z_tilt_object = obj
         
         # Remove duplicates while preserving order
         heaters = sorted(list(dict.fromkeys(heaters)))
@@ -122,11 +134,14 @@ class MoonrakerClient:
             'fans': fans,
             'extruders': extruders,
             'temperature_sensors': temperature_sensors,
+            'qgl_object': qgl_object,
+            'z_tilt_object': z_tilt_object,
             'all_objects': available_objects
         }
     
     def get_printer_objects(self, objects=None):
         """Get printer objects status"""
+        config = None
         if objects is None:
             # First try to get available objects, fall back to defaults
             config = self.get_printer_config()
@@ -134,12 +149,23 @@ class MoonrakerClient:
                 # Build object list from detected hardware
                 objects = []
                 objects.extend(config.get('heaters', []))
-                objects.extend(config.get('fans', []))
+                # Only include user-controllable fans (fan and fan_generic)
+                # Exclude heater_fan and controller_fan (they're automatically controlled)
+                controllable_fans = [
+                    f for f in config.get('fans', []) 
+                    if f == 'fan' or f.startswith('fan ') or f.startswith('fan_generic')
+                ]
+                objects.extend(controllable_fans)
                 objects.extend(config.get('temperature_sensors', []))
                 objects.extend([
                     "motion_report", "display_status", "virtual_sdcard",
                     "print_stats", "toolhead", "gcode_move"
                 ])
+                # Add QGL/Z_TILT objects if they exist
+                if config.get('qgl_object'):
+                    objects.append(config['qgl_object'])
+                if config.get('z_tilt_object'):
+                    objects.append(config['z_tilt_object'])
             else:
                 # Fallback to defaults
                 objects = [
@@ -147,7 +173,61 @@ class MoonrakerClient:
                     "motion_report", "display_status", "virtual_sdcard",
                     "print_stats", "toolhead", "gcode_move"
                 ]
-        params = {'objects': ','.join(objects)}
+        
+        # Build query parameters - specify fields for each object type
+        # Moonraker requires field specification to return actual data
+        params = {}
+        
+        # Add objects list
+        params['objects'] = ','.join(objects)
+        
+        # Get config if we don't have it yet
+        if config is None:
+            config = self.get_printer_config()
+        
+        # Specify fields for heaters (temperature and target)
+        heaters = config.get('heaters', []) if not config.get('error') else ['heater_bed', 'extruder']
+        for heater in heaters:
+            if heater in objects:
+                params[heater] = 'temperature,target'
+        
+        # Specify fields for fans (speed) - only user-controllable fans (fan and fan_generic)
+        fans = config.get('fans', []) if not config.get('error') else ['fan']
+        controllable_fans = [
+            f for f in fans 
+            if f == 'fan' or f.startswith('fan ') or f.startswith('fan_generic')
+        ]
+        for fan in controllable_fans:
+            if fan in objects:
+                params[fan] = 'speed'
+        
+        # Specify fields for temperature sensors (temperature)
+        sensors = config.get('temperature_sensors', []) if not config.get('error') else []
+        for sensor in sensors:
+            if sensor in objects:
+                params[sensor] = 'temperature'
+        
+        # Specify fields for common objects
+        common_objects_fields = {
+            'motion_report': 'live_position,live_velocity',
+            'display_status': 'progress',
+            'virtual_sdcard': 'progress',
+            'print_stats': 'state,filename,print_duration',
+            'toolhead': 'homed_axes,position,extruder',
+            'gcode_move': 'gcode_position,absolute_coordinates'
+        }
+        
+        for obj, fields in common_objects_fields.items():
+            if obj in objects:
+                params[obj] = fields
+        
+        # Specify fields for QGL/Z_TILT objects
+        if config and not config.get('error'):
+            if config.get('qgl_object') and config['qgl_object'] in objects:
+                params[config['qgl_object']] = 'applied'
+            if config.get('z_tilt_object') and config['z_tilt_object'] in objects:
+                params[config['z_tilt_object']] = 'applied'
+        
         return self._request('GET', '/printer/objects/query', params=params)
     
     def gcode_command(self, command):
@@ -207,6 +287,10 @@ class MoonrakerClient:
         """Emergency stop"""
         return self.gcode_command('M112')
     
+    def select_tool(self, tool_number):
+        """Select tool/extruder (T0, T1, etc.)"""
+        return self.gcode_command(f'T{tool_number}')
+    
     def get_file_list(self):
         """Get list of G-code files"""
         return self._request('GET', '/server/files/list', params={'root': 'gcodes'})
@@ -235,6 +319,31 @@ class MoonrakerClient:
     def resume_print(self):
         """Resume paused print"""
         return self._request('POST', '/printer/print/resume')
+    
+    def get_macros(self, ignored_macros=None):
+        """Get list of available macros from printer objects"""
+        if ignored_macros is None:
+            ignored_macros = []
+        
+        objects_result = self.get_available_objects()
+        if objects_result.get('error'):
+            return []
+        
+        available_objects = objects_result.get('result', {}).get('objects', [])
+        # Filter for gcode_macro objects and extract macro names
+        macros = []
+        for obj in available_objects:
+            if obj.startswith('gcode_macro '):
+                macro_name = obj.replace('gcode_macro ', '').strip()
+                # Filter out macros starting with underscore
+                if macro_name.startswith('_'):
+                    continue
+                # Filter out ignored macros (case-insensitive)
+                if macro_name.upper() in [m.upper() for m in ignored_macros]:
+                    continue
+                macros.append(macro_name)
+        
+        return sorted(macros)
 
 
 # Initialize Moonraker client
@@ -333,6 +442,21 @@ def emergency_stop():
     return jsonify(result)
 
 
+@app.route('/api/printer/tool', methods=['POST'])
+def select_tool():
+    """Select tool/extruder"""
+    data = request.json
+    tool_number = data.get('tool', 0)
+    try:
+        tool_number = int(tool_number)
+        if tool_number < 0:
+            return jsonify({'error': 'Tool number must be >= 0'}), 400
+        result = moonraker.select_tool(tool_number)
+        return jsonify(result)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid tool number'}), 400
+
+
 @app.route('/api/files/list')
 def file_list():
     """Get list of G-code files"""
@@ -397,6 +521,80 @@ def resume_print():
     return jsonify(result)
 
 
+def load_macro_categories():
+    """Load macro categories from config file"""
+    config_path = os.path.join(os.path.dirname(__file__), 'macro_categories.json')
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.warning(f"Macro categories config not found at {config_path}, using defaults")
+        return {
+            "categories": {"Other": {"macros": []}},
+            "default_category": "Other"
+        }
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing macro categories config: {e}")
+        return {
+            "categories": {"Other": {"macros": []}},
+            "default_category": "Other"
+        }
+
+
+def categorize_macros(macros, categories_config):
+    """Categorize macros based on config"""
+    categorized = {}
+    default_category = categories_config.get('default_category', 'Other')
+    categories = categories_config.get('categories', {})
+    
+    # Initialize all categories
+    for cat_name in categories.keys():
+        categorized[cat_name] = []
+    
+    # Add default category if not present
+    if default_category not in categorized:
+        categorized[default_category] = []
+    
+    # Categorize each macro
+    for macro in macros:
+        macro_upper = macro.upper()
+        categorized_flag = False
+        
+        # Check each category for this macro
+        for cat_name, cat_data in categories.items():
+            cat_macros = cat_data.get('macros', [])
+            if macro_upper in [m.upper() for m in cat_macros] or macro in cat_macros:
+                categorized[cat_name].append(macro)
+                categorized_flag = True
+                break
+        
+        # If not found in any category, add to default
+        if not categorized_flag:
+            categorized[default_category].append(macro)
+    
+    # Remove empty categories
+    categorized = {k: sorted(v) for k, v in categorized.items() if v}
+    
+    return categorized
+
+
+@app.route('/api/macros')
+def get_macros():
+    """Get categorized list of macros"""
+    try:
+        categories_config = load_macro_categories()
+        ignored_macros = categories_config.get('ignored_macros', [])
+        macros = moonraker.get_macros(ignored_macros=ignored_macros)
+        categorized = categorize_macros(macros, categories_config)
+        return jsonify({
+            'macros': macros,
+            'categorized': categorized
+        })
+    except Exception as e:
+        logger.error(f"Error getting macros: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection"""
@@ -415,6 +613,11 @@ def handle_status_request():
     """Handle status update request"""
     try:
         status = moonraker.get_printer_objects()
+        # Log temperature sensors found in status for debugging
+        if status.get('result') and status['result'].get('status'):
+            temp_sensors = [k for k in status['result']['status'].keys() if k.startswith('temperature_sensor')]
+            if temp_sensors:
+                logger.debug(f"Temperature sensors in status: {temp_sensors}")
         emit('status_update', status)
     except Exception as e:
         logger.error(f"Error getting status: {e}")

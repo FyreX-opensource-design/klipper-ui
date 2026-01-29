@@ -1,0 +1,27 @@
+{
+  "categories": {
+    "Movement": {
+      "macros": ["HOME", "HOME_ALL", "HOME_X", "HOME_Y", "HOME_Z", "MOVE", "PARK", "UNPARK"]
+    },
+    "Temperature": {
+      "macros": ["PREHEAT", "COOLDOWN", "SET_TEMP"]
+    },
+    "Printing": {
+      "macros": ["START_PRINT", "PAUSE", "RESUME", "CANCEL_PRINT", "PRINT_START", "PRINT_END"]
+    },
+    "Bed Leveling": {
+      "macros": ["BED_MESH_CALIBRATE", "BED_LEVEL", "QUAD_GANTRY_LEVEL", "Z_TILT"]
+    },
+    "Probe": {
+      "macros": ["PROBE_CALIBRATE", "PROBE_ACCURACY", "PROBE"]
+    },
+    "Filament": {
+      "macros": ["LOAD_FILAMENT", "UNLOAD_FILAMENT", "PURGE", "PAUSE"]
+    },
+    "Other": {
+      "macros": []
+    }
+  },
+  "default_category": "Other",
+  "ignored_macros": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"]
+}
