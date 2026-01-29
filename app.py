@@ -8,6 +8,7 @@ import requests
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 import logging
+from plugins import PluginManager
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -235,7 +236,9 @@ class MoonrakerClient:
     
     def gcode_command(self, command):
         """Send G-code command"""
-        return self._request('POST', '/printer/gcode/script', json={'script': command})
+        # Use the script endpoint which returns any immediate response
+        result = self._request('POST', '/printer/gcode/script', json={'script': command})
+        return result
     
     def set_temperature(self, heater, target):
         """Set target temperature for a heater"""
@@ -249,11 +252,19 @@ class MoonrakerClient:
         """Home specified axes"""
         return self.gcode_command(f'G28 {axis}')
     
-    def move_relative(self, x=None, y=None, z=None, e=None, speed=None):
+    def move_relative(self, x=None, y=None, z=None, e=None, speed=None, extrude_speed=None):
         """Move printer relative to current position"""
         cmd = 'G91\n'
-        if speed:
-            cmd += f'G1 F{speed}\n'
+        # Use extrusion feedrate for E moves, regular speed for others
+        # G-code F is in mm/min, so convert from mm/s
+        if e is not None and extrude_speed:
+            # For extrusion, set feedrate in mm/min (extrude_speed is in mm/s)
+            feedrate = int(extrude_speed * 60)
+            cmd += f'G1 F{feedrate}\n'
+        elif speed:
+            # Convert speed from mm/s to mm/min
+            feedrate = int(speed * 60)
+            cmd += f'G1 F{feedrate}\n'
         moves = []
         if x is not None:
             moves.append(f'X{x}')
@@ -268,11 +279,19 @@ class MoonrakerClient:
         cmd += 'G90'
         return self.gcode_command(cmd)
     
-    def move_absolute(self, x=None, y=None, z=None, e=None, speed=None):
+    def move_absolute(self, x=None, y=None, z=None, e=None, speed=None, extrude_speed=None):
         """Move printer to absolute position"""
         cmd = 'G90\n'
-        if speed:
-            cmd += f'G1 F{speed}\n'
+        # Use extrusion feedrate for E moves, regular speed for others
+        # G-code F is in mm/min, so convert from mm/s
+        if e is not None and extrude_speed:
+            # For extrusion, set feedrate in mm/min (extrude_speed is in mm/s)
+            feedrate = int(extrude_speed * 60)
+            cmd += f'G1 F{feedrate}\n'
+        elif speed:
+            # Convert speed from mm/s to mm/min
+            feedrate = int(speed * 60)
+            cmd += f'G1 F{feedrate}\n'
         moves = []
         if x is not None:
             moves.append(f'X{x}')
@@ -309,6 +328,11 @@ class MoonrakerClient:
     def get_file_list(self):
         """Get list of G-code files"""
         return self._request('GET', '/server/files/list', params={'root': 'gcodes'})
+    
+    def get_file_metadata(self, filename):
+        """Get file metadata including thumbnails"""
+        # Moonraker metadata endpoint format
+        return self._request('GET', '/server/files/metadata', params={'filename': filename})
     
     def upload_file(self, file_data, filename):
         """Upload a G-code file"""
@@ -388,11 +412,44 @@ class MoonrakerClient:
 # Initialize Moonraker client
 moonraker = MoonrakerClient(MOONRAKER_URL)
 
+# Initialize plugin manager
+plugin_manager = PluginManager()
+plugin_manager.load_plugins()
+
 
 @app.route('/')
 def index():
     """Main page"""
-    return render_template('index.html')
+    # Get plugin HTML and static files
+    plugins_html = []
+    plugins_css = []
+    plugins_js = []
+    
+    for plugin in plugin_manager.plugins.values():
+        if plugin.enabled:
+            html = plugin.get_html()
+            if html:
+                plugins_html.append(html)
+            
+            # Get CSS files
+            for css_file in plugin.get_css():
+                css_path = os.path.join(plugin.path, css_file)
+                if os.path.exists(css_path):
+                    plugins_css.append(f'/api/plugins/{plugin.name}/static/{css_file}')
+            
+            # Get JS files
+            for js_file in plugin.get_js():
+                js_path = os.path.join(plugin.path, js_file)
+                if os.path.exists(js_path):
+                    plugins_js.append(f'/api/plugins/{plugin.name}/static/{js_file}')
+    
+    return render_template(
+        'index.html',
+        MOONRAKER_WS_URL=MOONRAKER_WS_URL,
+        plugins_html=plugins_html,
+        plugins_css=plugins_css,
+        plugins_js=plugins_js
+    )
 
 
 @app.route('/api/printer/info')
@@ -465,11 +522,12 @@ def move_printer():
     z = data.get('z')
     e = data.get('e')
     speed = data.get('speed')
+    extrude_speed = data.get('extrude_speed')
     
     if move_type == 'absolute':
-        result = moonraker.move_absolute(x=x, y=y, z=z, e=e, speed=speed)
+        result = moonraker.move_absolute(x=x, y=y, z=z, e=e, speed=speed, extrude_speed=extrude_speed)
     else:
-        result = moonraker.move_relative(x=x, y=y, z=z, e=e, speed=speed)
+        result = moonraker.move_relative(x=x, y=y, z=z, e=e, speed=speed, extrude_speed=extrude_speed)
     
     return jsonify(result)
 
@@ -504,8 +562,48 @@ def select_tool():
 
 @app.route('/api/files/list')
 def file_list():
-    """Get list of G-code files"""
+    """Get list of G-code files with metadata"""
     result = moonraker.get_file_list()
+    
+    # Enhance file list with thumbnail information
+    if result.get('result'):
+        files = result['result']
+        for file_info in files:
+            if file_info.get('path', '').endswith(('.gcode', '.g')):
+                filename = file_info.get('path', '').split('/')[-1]
+                # Try to get metadata for thumbnail
+                try:
+                    metadata = moonraker.get_file_metadata(filename)
+                    if metadata.get('result'):
+                        # Moonraker metadata may contain thumbnail paths
+                        file_info['metadata'] = metadata['result']
+                        
+                        # Construct thumbnail URL
+                        thumbnail_url = None
+                        metadata_result = metadata['result']
+                        
+                        # Check for thumbnails in metadata
+                        if metadata_result.get('thumbnails') and len(metadata_result['thumbnails']) > 0:
+                            # Use the first thumbnail
+                            thumb = metadata_result['thumbnails'][0]
+                            if thumb.get('relative_path'):
+                                thumbnail_url = f"{MOONRAKER_URL}/server/files/gcodes/{thumb['relative_path']}"
+                            elif thumb.get('path'):
+                                thumbnail_url = f"{MOONRAKER_URL}/server/files/gcodes/{thumb['path']}"
+                        
+                        # Fallback: try standard thumbnail location
+                        if not thumbnail_url:
+                            # Standard location: .thumbs directory
+                            base_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                            thumbnail_url = f"{MOONRAKER_URL}/server/files/gcodes/.thumbs/{base_name}.png"
+                        
+                        file_info['thumbnail_url'] = thumbnail_url
+                except Exception as e:
+                    logger.debug(f"Could not get metadata for {filename}: {e}")
+                    # Still try standard thumbnail location
+                    base_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    file_info['thumbnail_url'] = f"{MOONRAKER_URL}/server/files/gcodes/.thumbs/{base_name}.png"
+    
     return jsonify(result)
 
 
@@ -720,6 +818,26 @@ def get_macros():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/plugins')
+def get_plugins():
+    """Get list of all loaded plugins"""
+    return jsonify(plugin_manager.get_plugins_info())
+
+
+@app.route('/api/plugins/<plugin_name>/static/<path:filename>')
+def serve_plugin_static(plugin_name, filename):
+    """Serve static files from plugins"""
+    plugin = plugin_manager.get_plugin(plugin_name)
+    if not plugin:
+        return jsonify({'error': 'Plugin not found'}), 404
+    
+    file_path = os.path.join(plugin.path, filename)
+    if not os.path.exists(file_path) or not file_path.startswith(plugin.path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    return send_from_directory(plugin.path, filename)
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection"""
@@ -749,6 +867,10 @@ def handle_status_request():
         emit('error', {'message': str(e)})
 
 
+# Register plugins with Flask app
+plugin_manager.register_plugins(app, moonraker)
+
 if __name__ == '__main__':
     logger.info(f"Starting Flask app, connecting to Moonraker at {MOONRAKER_URL}")
+    logger.info(f"Loaded {len(plugin_manager.plugins)} plugin(s)")
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

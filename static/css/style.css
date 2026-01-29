@@ -506,6 +506,12 @@ header h1 {
 .speed-control {
     margin-top: 15px;
     display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.speed-input-group {
+    display: flex;
     align-items: center;
     gap: 10px;
 }
@@ -513,6 +519,7 @@ header h1 {
 .speed-control label {
     font-weight: 600;
     color: #4b5563;
+    min-width: 180px;
 }
 
 .speed-control input {
@@ -539,7 +546,7 @@ header h1 {
 
 .file-item {
     display: flex;
-    justify-content: space-between;
+    gap: 15px;
     align-items: center;
     padding: 12px;
     border-bottom: 1px solid #e5e7eb;
@@ -554,15 +561,42 @@ header h1 {
     border-bottom: none;
 }
 
-.file-name {
+.file-thumbnail {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.file-info {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.file-name {
     font-weight: 500;
     color: #111827;
+    word-break: break-word;
 }
 
 .file-actions-buttons {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .print-controls {
@@ -736,6 +770,24 @@ header h1 {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+/* Plugin Panel Styles */
+.plugin-panel {
+    /* Plugin panels inherit from .panel but can override styles */
+}
+
+.plugin-panel h2 {
+    /* Plugin panel titles */
+    color: #667eea;
+}
+
+/* Ensure plugin panels are styled consistently */
+.plugin-panel .panel {
+    /* Nested panels in plugins */
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
 }
 
 @media (max-width: 768px) {

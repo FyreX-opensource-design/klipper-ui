@@ -267,11 +267,103 @@ function getTemperatureSensorDisplayName(sensor) {
     return name;
 }
 
+// Moonraker WebSocket connection for G-code responses
+let moonrakerWS = null;
+let requestIdCounter = 1000;
+
+// Connect to Moonraker WebSocket for G-code responses
+function connectMoonrakerWS() {
+    // Get Moonraker WebSocket URL from environment or use default
+    const moonrakerWSURL = window.MOONRAKER_WS_URL || 'ws://localhost:7125/websocket';
+    
+    try {
+        moonrakerWS = new WebSocket(moonrakerWSURL);
+        
+        moonrakerWS.onopen = () => {
+            console.log('Connected to Moonraker WebSocket');
+            addConsoleMessage('Connected to Moonraker WebSocket', 'response');
+            // Moonraker automatically sends notify_gcode_response for all G-code output
+            // No explicit subscription needed - just listen for notifications
+        };
+        
+        moonrakerWS.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                
+                // Debug: log all messages to see what we're receiving
+                console.log('Moonraker WebSocket message:', data);
+                
+                // Handle G-code response notifications
+                if (data.method === 'notify_gcode_response') {
+                    // Moonraker sends responses in params array
+                    // The response can be in different formats
+                    let response = null;
+                    
+                    if (data.params) {
+                        if (Array.isArray(data.params) && data.params.length > 0) {
+                            // First param is usually the response string
+                            response = data.params[0];
+                        } else if (typeof data.params === 'string') {
+                            response = data.params;
+                        } else if (typeof data.params === 'object') {
+                            response = data.params.response || data.params.message || data.params;
+                        }
+                    }
+                    
+                    // Handle the response
+                    if (response) {
+                        let responseStr = '';
+                        if (typeof response === 'string') {
+                            responseStr = response;
+                        } else if (typeof response === 'object' && response.response) {
+                            responseStr = response.response;
+                        } else {
+                            responseStr = String(response);
+                        }
+                        
+                        if (responseStr.trim()) {
+                            // Split multi-line responses and display each line
+                            const lines = responseStr.trim().split('\n');
+                            lines.forEach(line => {
+                                const trimmed = line.trim();
+                                // Show all responses, including "ok" for debugging
+                                if (trimmed) {
+                                    addConsoleMessage(trimmed, 'response');
+                                }
+                            });
+                        }
+                    } else {
+                        console.log('No response extracted from:', data);
+                    }
+                }
+            } catch (e) {
+                // Log full error for debugging
+                console.error('WebSocket message parse error:', e);
+                console.error('Raw message:', event.data);
+            }
+        };
+        
+        moonrakerWS.onerror = (error) => {
+            console.error('Moonraker WebSocket error:', error);
+        };
+        
+        moonrakerWS.onclose = () => {
+            console.log('Moonraker WebSocket closed, reconnecting...');
+            // Reconnect after 3 seconds
+            setTimeout(connectMoonrakerWS, 3000);
+        };
+    } catch (error) {
+        console.error('Failed to connect to Moonraker WebSocket:', error);
+    }
+}
+
 // Connection status reflects PRINTER (Moonraker) connectivity, not Socket.IO to our server
 socket.on('connect', () => {
     // Don't set Connected here - we're only connected to our Flask app.
     // Request status; we'll set Connected/Disconnected when we get the response.
     requestStatus();
+    // Also connect to Moonraker WebSocket for G-code responses
+    connectMoonrakerWS();
 });
 
 socket.on('disconnect', () => {
@@ -295,6 +387,7 @@ socket.on('error', (data) => {
     addConsoleMessage(`Error: ${data.message}`, 'error');
     updateConnectionStatus(false);
 });
+
 
 // Update connection status indicator (printer/Moonraker connectivity)
 function updateConnectionStatus(connected) {
@@ -860,8 +953,12 @@ async function moveRelative(axis, distance) {
     const input = document.getElementById(axis.toLowerCase() + 'Move');
     const distanceToMove = input.value ? parseFloat(input.value) : distance;
     const speed = parseInt(document.getElementById('moveSpeed').value) || 100;
+    const extrudeSpeed = parseFloat(document.getElementById('extrudeSpeed').value) || 5;
     
     const moveData = { type: 'relative', speed };
+    if (axis.toLowerCase() === 'e') {
+        moveData.extrude_speed = extrudeSpeed;
+    }
     moveData[axis.toLowerCase()] = distanceToMove;
     
     try {
@@ -896,7 +993,11 @@ async function moveToPosition(axis) {
     }
     
     const speed = parseInt(document.getElementById('moveSpeed').value) || 100;
+    const extrudeSpeed = parseFloat(document.getElementById('extrudeSpeed').value) || 5;
     const moveData = { type: 'absolute', speed };
+    if (axis.toLowerCase() === 'e') {
+        moveData.extrude_speed = extrudeSpeed;
+    }
     moveData[axis.toLowerCase()] = targetPosition;
     
     try {
@@ -988,13 +1089,26 @@ async function loadFileList() {
             .filter(file => file.path.endsWith('.gcode') || file.path.endsWith('.g'))
             .map(file => {
                 const filename = file.path.split('/').pop();
+                const thumbnailUrl = file.thumbnail_url;
+                
+                const thumbnailHtml = thumbnailUrl ? 
+                    `<div class="file-thumbnail">
+                        <img src="${thumbnailUrl}" 
+                             alt="${filename}" 
+                             onerror="this.style.display='none'; this.parentElement.style.display='none';"
+                             loading="lazy">
+                    </div>` : '';
+                
                 return `
                     <div class="file-item">
-                        <span class="file-name">${filename}</span>
-                        <div class="file-actions-buttons">
-                            <button class="btn btn-success btn-small" onclick="startPrint('${filename}')">Print</button>
-                            <button class="btn btn-primary btn-small" onclick="addToQueue('${filename}')">Add to Queue</button>
-                            <button class="btn btn-danger btn-small" onclick="deleteFile('${filename}')">Delete</button>
+                        ${thumbnailHtml}
+                        <div class="file-info">
+                            <span class="file-name">${filename}</span>
+                            <div class="file-actions-buttons">
+                                <button class="btn btn-success btn-small" onclick="startPrint('${filename}')">Print</button>
+                                <button class="btn btn-primary btn-small" onclick="addToQueue('${filename}')">Add to Queue</button>
+                                <button class="btn btn-danger btn-small" onclick="deleteFile('${filename}')">Delete</button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1238,9 +1352,8 @@ async function sendGcodeCommand(command) {
         const result = await response.json();
         if (result.error) {
             addConsoleMessage(`Error: ${result.error}`, 'error');
-        } else {
-            addConsoleMessage('Command sent', 'response');
         }
+        // Don't add generic "Command sent" message - we'll get the actual response via WebSocket
     } catch (error) {
         console.error('Error sending G-code:', error);
         addConsoleMessage(`Error: ${error.message}`, 'error');
