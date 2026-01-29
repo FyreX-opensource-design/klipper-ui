@@ -1,0 +1,10 @@
+{
+  "cameras": [
+    {
+      "name": "Camera 1",
+      "url": "http://192.168.1.217/webcam/?action=stream",
+      "snapshot_url": "http://192.168.1.217/webcam/?action=snapshot"
+    }
+  ],
+  "default_stream_type": "stream"
+}

@@ -333,12 +333,72 @@ function requestStatus() {
     socket.emit('request_status');
 }
 
+// Check printer info for errors
+async function checkPrinterErrors() {
+    try {
+        const response = await fetch(`${API_BASE}/api/printer/info`);
+        const result = await response.json();
+        
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        if (!errorSection || !errorMessage) return;
+        
+        // Check for error state
+        if (result.result) {
+            const printerInfo = result.result;
+            const state = printerInfo.state || '';
+            const stateMessage = printerInfo.state_message || '';
+            
+            // Check if printer is in error state
+            const isError = state === 'error' || 
+                           state === 'shutdown' || 
+                           stateMessage.toLowerCase().includes('error') ||
+                           stateMessage.toLowerCase().includes('shutdown');
+            
+            if (isError && stateMessage) {
+                errorSection.style.display = 'block';
+                errorMessage.textContent = stateMessage;
+                errorMessage.className = 'error-message';
+            } else {
+                errorSection.style.display = 'none';
+            }
+        } else if (result.error) {
+            // Connection error or other API error
+            errorSection.style.display = 'block';
+            errorMessage.textContent = `Connection Error: ${result.error}`;
+            errorMessage.className = 'error-message';
+        } else {
+            errorSection.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error checking printer status:', error);
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        if (errorSection && errorMessage) {
+            errorSection.style.display = 'block';
+            errorMessage.textContent = `Failed to check printer status: ${error.message}`;
+            errorMessage.className = 'error-message';
+        }
+    }
+}
+
 // Update printer status display
 function updatePrinterStatus(data) {
     if (!data || data.error) {
         if (data && data.error) {
             console.error('Status update error:', data.error);
+            // Show error if we can't get status
+            const errorSection = document.getElementById('errorSection');
+            const errorMessage = document.getElementById('errorMessage');
+            if (errorSection && errorMessage) {
+                errorSection.style.display = 'block';
+                errorMessage.textContent = `Status Error: ${data.error}`;
+                errorMessage.className = 'error-message';
+            }
         }
+        // Still try to check printer info for errors
+        checkPrinterErrors();
         return;
     }
 
@@ -346,11 +406,21 @@ function updatePrinterStatus(data) {
     if (data.result && data.result.status) {
         const status = data.result.status;
         
+        // Check for errors in status
+        checkPrinterErrors();
+        
         // Print stats
         if (status.print_stats) {
             const printStats = status.print_stats;
-            document.getElementById('printerState').textContent = printStats.state || '-';
+            const printerState = printStats.state || '-';
+            document.getElementById('printerState').textContent = printerState;
             document.getElementById('currentFile').textContent = printStats.filename || '-';
+            
+            // Check for error state in print stats
+            if (printerState === 'error' || printerState === 'standby') {
+                // Check printer info for more details
+                checkPrinterErrors();
+            }
             
             // Show/hide print controls
             const printPanel = document.getElementById('printPanel');
@@ -874,7 +944,7 @@ function handleMoveKeyPress(event, axis) {
 
 // Emergency stop
 async function emergencyStop() {
-    if (!confirm('Are you sure you want to emergency stop?')) {
+    if (!confirm('Are you sure you want to emergency stop? This will immediately halt all printer operations.')) {
         return;
     }
     
@@ -884,9 +954,20 @@ async function emergencyStop() {
         });
         
         const result = await response.json();
-        addConsoleMessage('EMERGENCY STOP activated', 'error');
+        if (result.error) {
+            addConsoleMessage(`Emergency stop error: ${result.error}`, 'error');
+            alert(`Emergency stop failed: ${result.error}`);
+        } else {
+            addConsoleMessage('EMERGENCY STOP activated', 'error');
+            // Force immediate status check
+            setTimeout(() => {
+                requestStatus();
+                checkPrinterErrors();
+            }, 500);
+        }
     } catch (error) {
         console.error('Error emergency stop:', error);
+        addConsoleMessage(`Emergency stop failed: ${error.message}`, 'error');
         alert('Failed to emergency stop');
     }
 }
@@ -919,6 +1000,7 @@ async function loadFileList() {
                         <span class="file-name">${filename}</span>
                         <div class="file-actions-buttons">
                             <button class="btn btn-success btn-small" onclick="startPrint('${filename}')">Print</button>
+                            <button class="btn btn-primary btn-small" onclick="addToQueue('${filename}')">Add to Queue</button>
                             <button class="btn btn-danger btn-small" onclick="deleteFile('${filename}')">Delete</button>
                         </div>
                     </div>
@@ -1172,6 +1254,283 @@ async function sendGcodeCommand(command) {
     }
 }
 
+// Load and display print queue
+async function loadQueue() {
+    const container = document.getElementById('queueList');
+    if (!container) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/queue/status`);
+        const result = await response.json();
+        
+        if (result.error) {
+            container.innerHTML = `<p style="color: red;">Error loading queue: ${result.error}</p>`;
+            return;
+        }
+        
+        const queue = result.result?.queued_jobs || [];
+        
+        if (queue.length === 0) {
+            container.innerHTML = '<p>Queue is empty</p>';
+            return;
+        }
+        
+        let html = '';
+        queue.forEach((job, index) => {
+            const filename = job.filename || 'Unknown';
+            const jobId = job.job_id || index;
+            html += `
+                <div class="queue-item">
+                    <span class="queue-item-number">${index + 1}.</span>
+                    <span class="queue-item-name">${filename}</span>
+                    <button class="btn btn-small btn-danger" onclick="removeFromQueue(${jobId})">Remove</button>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading queue:', error);
+        container.innerHTML = '<p style="color: red;">Failed to load queue</p>';
+    }
+}
+
+// Add file to queue
+async function addToQueue(filename) {
+    try {
+        const response = await fetch(`${API_BASE}/api/queue/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename })
+        });
+        
+        const result = await response.json();
+        if (result.error) {
+            alert(`Error: ${result.error}`);
+        } else {
+            addConsoleMessage(`Added ${filename} to queue`, 'response');
+            loadQueue();
+        }
+    } catch (error) {
+        console.error('Error adding to queue:', error);
+        alert('Failed to add file to queue');
+    }
+}
+
+// Remove job from queue
+async function removeFromQueue(jobId) {
+    try {
+        const response = await fetch(`${API_BASE}/api/queue/remove`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_id: jobId })
+        });
+        
+        const result = await response.json();
+        if (result.error) {
+            alert(`Error: ${result.error}`);
+        } else {
+            addConsoleMessage('Removed job from queue', 'response');
+            loadQueue();
+        }
+    } catch (error) {
+        console.error('Error removing from queue:', error);
+        alert('Failed to remove job from queue');
+    }
+}
+
+// Clear entire queue
+async function clearQueue() {
+    if (!confirm('Clear all jobs from the queue?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/queue/clear`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        if (result.error) {
+            alert(`Error: ${result.error}`);
+        } else {
+            addConsoleMessage('Queue cleared', 'response');
+            loadQueue();
+        }
+    } catch (error) {
+        console.error('Error clearing queue:', error);
+        alert('Failed to clear queue');
+    }
+}
+
+// Check if printer is stopped/errored (no need for confirmation)
+function isPrinterStopped() {
+    // Check if error section is visible
+    const errorSection = document.getElementById('errorSection');
+    if (errorSection && errorSection.style.display !== 'none') {
+        return true;
+    }
+    
+    // Check printer state
+    const printerState = document.getElementById('printerState');
+    if (printerState) {
+        const state = printerState.textContent.toLowerCase();
+        // States that indicate printer is stopped
+        if (state === 'error' || state === 'standby' || state === 'complete' || state === 'cancelled') {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Restart printer
+async function restartPrinter() {
+    const isStopped = isPrinterStopped();
+    
+    if (!isStopped) {
+        if (!confirm('Restart Klipper? This will restart the printer firmware.')) {
+            return;
+        }
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/printer/restart`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        if (result.error) {
+            alert(`Error: ${result.error}`);
+        } else {
+            addConsoleMessage('Restart command sent', 'response');
+            // Hide error section after a delay to allow restart
+            setTimeout(() => {
+                checkPrinterErrors();
+            }, 3000);
+        }
+    } catch (error) {
+        console.error('Error restarting printer:', error);
+        alert('Failed to restart printer');
+    }
+}
+
+// Firmware restart
+async function firmwareRestart() {
+    const isStopped = isPrinterStopped();
+    
+    if (!isStopped) {
+        if (!confirm('Firmware restart? This will perform a full firmware restart. Continue?')) {
+            return;
+        }
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/printer/firmware_restart`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        if (result.error) {
+            alert(`Error: ${result.error}`);
+        } else {
+            addConsoleMessage('Firmware restart command sent', 'response');
+            // Hide error section after a delay to allow restart
+            setTimeout(() => {
+                checkPrinterErrors();
+            }, 3000);
+        }
+    } catch (error) {
+        console.error('Error firmware restart:', error);
+        alert('Failed to firmware restart');
+    }
+}
+
+// Load and display cameras
+async function loadCameras() {
+    const container = document.getElementById('camerasContainer');
+    const panel = document.getElementById('cameraPanel');
+    if (!container || !panel) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/cameras`);
+        const result = await response.json();
+        
+        if (result.error) {
+            container.innerHTML = `<p style="color: red;">Error loading cameras: ${result.error}</p>`;
+            panel.style.display = 'none';
+            return;
+        }
+        
+        const cameras = result.cameras || [];
+        
+        if (cameras.length === 0) {
+            panel.style.display = 'none';
+            return;
+        }
+        
+        // Show panel if we have cameras
+        panel.style.display = 'block';
+        
+        let html = '';
+        cameras.forEach((camera, index) => {
+            const cameraId = `camera_${index}`;
+            const streamUrl = camera.url || '';
+            const snapshotUrl = camera.snapshot_url || streamUrl.replace('?action=stream', '?action=snapshot');
+            const cameraName = camera.name || `Camera ${index + 1}`;
+            
+            html += `
+                <div class="camera-item">
+                    <h3 class="camera-name">${cameraName}</h3>
+                    <div class="camera-view">
+                        <img id="${cameraId}" 
+                             src="${streamUrl}" 
+                             alt="${cameraName}"
+                             onerror="this.onerror=null; this.src='${snapshotUrl}'; this.style.cursor='pointer'; this.title='Click to refresh'; this.onclick='refreshCamera(\"${cameraId}\", \"${streamUrl}\", \"${snapshotUrl}\")';"
+                             style="max-width: 100%; height: auto; border-radius: 6px;">
+                    </div>
+                    <div class="camera-controls">
+                        <button class="btn btn-small btn-secondary" onclick="refreshCamera('${cameraId}', '${streamUrl}', '${snapshotUrl}')">Refresh</button>
+                        <button class="btn btn-small btn-secondary" onclick="toggleCameraStream('${cameraId}', '${streamUrl}', '${snapshotUrl}')">Toggle Stream</button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading cameras:', error);
+        container.innerHTML = '<p style="color: red;">Failed to load cameras</p>';
+        panel.style.display = 'none';
+    }
+}
+
+// Refresh camera image
+function refreshCamera(cameraId, streamUrl, snapshotUrl) {
+    const img = document.getElementById(cameraId);
+    if (!img) return;
+    
+    // Add timestamp to force refresh
+    const timestamp = new Date().getTime();
+    const separator = streamUrl.includes('?') ? '&' : '?';
+    img.src = `${streamUrl}${separator}_t=${timestamp}`;
+}
+
+// Toggle between stream and snapshot
+function toggleCameraStream(cameraId, streamUrl, snapshotUrl) {
+    const img = document.getElementById(cameraId);
+    if (!img) return;
+    
+    // Check if currently showing stream
+    if (img.src.includes('?action=stream') || img.src.includes('&action=stream')) {
+        // Switch to snapshot
+        img.src = snapshotUrl;
+    } else {
+        // Switch to stream
+        img.src = streamUrl;
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Set default movement mode to relative
@@ -1180,8 +1539,15 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPrinterConfig().then(() => {
         loadFileList();
         loadMacros();
+        loadQueue();
+        loadCameras();
+        checkPrinterErrors();
         // Request status updates every 2 seconds (throttled internally)
         setInterval(requestStatus, 2000);
+        // Update queue every 5 seconds
+        setInterval(loadQueue, 5000);
+        // Check for errors every 5 seconds
+        setInterval(checkPrinterErrors, 5000);
         addConsoleMessage('Klipper UI initialized', 'response');
     });
 });

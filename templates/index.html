@@ -39,6 +39,23 @@
                         <span id="currentFile">-</span>
                     </div>
                 </div>
+                <div class="error-section" id="errorSection" style="display: none;">
+                    <h3>Printer Error</h3>
+                    <div class="error-message" id="errorMessage"></div>
+                    <div class="error-actions">
+                        <button class="btn btn-warning btn-small" onclick="restartPrinter()">Restart</button>
+                        <button class="btn btn-danger btn-small" onclick="firmwareRestart()">Firmware Restart</button>
+                    </div>
+                </div>
+                <div class="queue-section">
+                    <h3>Print Queue</h3>
+                    <div class="queue-controls">
+                        <button class="btn btn-small btn-danger" onclick="clearQueue()">Clear Queue</button>
+                    </div>
+                    <div class="queue-list" id="queueList">
+                        <p>Loading queue...</p>
+                    </div>
+                </div>
             </section>
 
             <!-- Temperature Control -->
@@ -54,6 +71,14 @@
                 <h2>Fan Control</h2>
                 <div class="fan-controls" id="fanControls">
                     <p>Loading printer configuration...</p>
+                </div>
+            </section>
+
+            <!-- Camera -->
+            <section class="panel camera-panel" id="cameraPanel" style="display: none;">
+                <h2>Camera</h2>
+                <div class="cameras-container" id="camerasContainer">
+                    <p>Loading cameras...</p>
                 </div>
             </section>
 

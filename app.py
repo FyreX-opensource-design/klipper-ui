@@ -19,6 +19,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MOONRAKER_URL = os.environ.get('MOONRAKER_URL', 'http://localhost:7125')
 MOONRAKER_WS_URL = os.environ.get('MOONRAKER_WS_URL', 'ws://localhost:7125/websocket')
 
+# Camera configuration
+CAMERA_CONFIG_PATH = os.environ.get('CAMERA_CONFIG_PATH', os.path.join(os.path.dirname(__file__), 'camera_config.json'))
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -284,7 +287,19 @@ class MoonrakerClient:
         return self.gcode_command(cmd)
     
     def emergency_stop(self):
-        """Emergency stop"""
+        """Emergency stop - try multiple methods to ensure it works"""
+        # Try Moonraker's machine emergency stop endpoint first
+        result = self._request('POST', '/machine/emergency_stop')
+        if not result.get('error'):
+            return result
+        
+        # Try printer emergency stop endpoint
+        result = self._request('POST', '/printer/emergency_stop')
+        if not result.get('error'):
+            return result
+        
+        # Fall back to M112 gcode command (most reliable)
+        logger.warning("Using M112 as fallback for emergency stop")
         return self.gcode_command('M112')
     
     def select_tool(self, tool_number):
@@ -319,6 +334,30 @@ class MoonrakerClient:
     def resume_print(self):
         """Resume paused print"""
         return self._request('POST', '/printer/print/resume')
+    
+    def restart_printer(self):
+        """Restart Klipper (RESTART command)"""
+        return self.gcode_command('RESTART')
+    
+    def firmware_restart(self):
+        """Firmware restart (FIRMWARE_RESTART command)"""
+        return self.gcode_command('FIRMWARE_RESTART')
+    
+    def get_job_queue_status(self):
+        """Get job queue status"""
+        return self._request('GET', '/server/job_queue/status')
+    
+    def add_job_to_queue(self, filename):
+        """Add a job to the print queue"""
+        return self._request('POST', '/server/job_queue/job', json={'filename': filename})
+    
+    def remove_job_from_queue(self, job_id):
+        """Remove a job from the queue"""
+        return self._request('DELETE', f'/server/job_queue/job/{job_id}')
+    
+    def clear_job_queue(self):
+        """Clear all jobs from the queue"""
+        return self._request('DELETE', '/server/job_queue/all')
     
     def get_macros(self, ignored_macros=None):
         """Get list of available macros from printer objects"""
@@ -438,8 +477,14 @@ def move_printer():
 @app.route('/api/printer/emergency_stop', methods=['POST'])
 def emergency_stop():
     """Emergency stop"""
-    result = moonraker.emergency_stop()
-    return jsonify(result)
+    try:
+        result = moonraker.emergency_stop()
+        # Log the emergency stop
+        logger.warning("Emergency stop activated")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Emergency stop error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/printer/tool', methods=['POST'])
@@ -519,6 +564,86 @@ def resume_print():
     """Resume paused print"""
     result = moonraker.resume_print()
     return jsonify(result)
+
+
+@app.route('/api/queue/status')
+def get_queue_status():
+    """Get job queue status"""
+    result = moonraker.get_job_queue_status()
+    return jsonify(result)
+
+
+@app.route('/api/queue/add', methods=['POST'])
+def add_to_queue():
+    """Add a file to the print queue"""
+    data = request.json
+    filename = data.get('filename')
+    if not filename:
+        return jsonify({'error': 'No filename provided'}), 400
+    result = moonraker.add_job_to_queue(filename)
+    return jsonify(result)
+
+
+@app.route('/api/queue/remove', methods=['POST'])
+def remove_from_queue():
+    """Remove a job from the queue"""
+    data = request.json
+    job_id = data.get('job_id')
+    if job_id is None:
+        return jsonify({'error': 'No job_id provided'}), 400
+    result = moonraker.remove_job_from_queue(job_id)
+    return jsonify(result)
+
+
+@app.route('/api/queue/clear', methods=['POST'])
+def clear_queue():
+    """Clear all jobs from the queue"""
+    result = moonraker.clear_job_queue()
+    return jsonify(result)
+
+
+@app.route('/api/printer/restart', methods=['POST'])
+def restart_printer():
+    """Restart Klipper"""
+    result = moonraker.restart_printer()
+    return jsonify(result)
+
+
+@app.route('/api/printer/firmware_restart', methods=['POST'])
+def firmware_restart():
+    """Firmware restart"""
+    result = moonraker.firmware_restart()
+    return jsonify(result)
+
+
+def load_camera_config():
+    """Load camera configuration from config file"""
+    try:
+        with open(CAMERA_CONFIG_PATH, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.warning(f"Camera config not found at {CAMERA_CONFIG_PATH}, using defaults")
+        return {
+            "cameras": [],
+            "default_stream_type": "stream"
+        }
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing camera config: {e}")
+        return {
+            "cameras": [],
+            "default_stream_type": "stream"
+        }
+
+
+@app.route('/api/cameras')
+def get_cameras():
+    """Get camera configuration"""
+    try:
+        config = load_camera_config()
+        return jsonify(config)
+    except Exception as e:
+        logger.error(f"Error getting cameras: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 def load_macro_categories():
