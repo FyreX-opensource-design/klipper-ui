@@ -1,0 +1,36 @@
+{
+  "macro_name": "PREHEAT",
+  "presets": [
+    {
+      "name": "PLA",
+      "hotend_temp": 210,
+      "bed_temp": 60,
+      "temps": "210/60"
+    },
+    {
+      "name": "PETG",
+      "hotend_temp": 240,
+      "bed_temp": 80,
+      "temps": "240/80"
+    },
+    {
+      "name": "ABS",
+      "hotend_temp": 250,
+      "bed_temp": 100,
+      "temps": "250/100"
+    },
+    {
+      "name": "TPU",
+      "hotend_temp": 230,
+      "bed_temp": 30,
+      "temps": "230/30"
+    },
+    {
+      "name": "ASA",
+      "hotend_temp": 260,
+      "bed_temp": 100,
+      "temps": "260/100"
+    }
+  ],
+  "default_toolhead": "extruder"
+}

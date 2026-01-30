@@ -350,6 +350,7 @@ header h1 {
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: nowrap;
 }
 
 .temp-input-group input {
@@ -358,6 +359,39 @@ header h1 {
     border: 2px solid #e5e7eb;
     border-radius: 6px;
     font-size: 14px;
+}
+
+.temp-input-group input[type="range"] {
+    flex: 1;
+    min-width: 150px;
+}
+
+.temp-input-group span {
+    min-width: 50px;
+    text-align: right;
+    font-weight: 600;
+    color: #4b5563;
+    flex-shrink: 0;
+}
+
+.temp-input-group button {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 8px 16px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.temp-input-group button:hover {
+    background: #5568d3;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .temp-input-group input:focus {
@@ -450,6 +484,8 @@ header h1 {
 .movement-mode-toggle .btn {
     flex: 1;
     padding: 8px 16px;
+    background: #6b7280;
+    color: white;
 }
 
 .movement-mode-toggle .btn.active {
@@ -496,6 +532,29 @@ header h1 {
 
 .axis-controls .btn-small {
     flex-shrink: 0;
+    background: #6b7280;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.axis-controls .btn-small:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.axis-controls .btn-small.btn-success {
+    background: #10b981;
+}
+
+.axis-controls .btn-small.btn-success:hover {
+    background: #059669;
 }
 
 .axis-controls input:focus {
