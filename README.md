@@ -12,6 +12,9 @@ A Flask-based web interface for controlling 3D printers running Klipper firmware
 - **G-code Console**: Send custom G-code commands directly to the printer
 - **Real-time Updates**: WebSocket-based real-time status updates
 - **Modern UI**: Responsive, modern web interface
+- **Plugin System**: Extensible plugin architecture for adding custom functionality
+- **Camera Support**: Configure and display webcam streams
+- **Macro Organization**: Organize macros into custom categories
 
 ## Prerequisites
 
@@ -30,11 +33,14 @@ pip install -r requirements.txt
 
 ## Configuration
 
+### Environment Variables
+
 The application uses environment variables for configuration:
 
 - `MOONRAKER_URL`: Moonraker API URL (default: `http://localhost:7125`)
 - `MOONRAKER_WS_URL`: Moonraker WebSocket URL (default: `ws://localhost:7125/websocket`)
 - `SECRET_KEY`: Flask secret key for sessions (default: development key)
+- `CAMERA_CONFIG_PATH`: Path to camera configuration file (default: `camera_config.json`)
 
 You can set these in your environment or create a `.env` file:
 
@@ -42,6 +48,66 @@ You can set these in your environment or create a `.env` file:
 export MOONRAKER_URL=http://your-printer-ip:7125
 export MOONRAKER_WS_URL=ws://your-printer-ip:7125/websocket
 ```
+
+### Camera Configuration
+
+Camera settings are configured in `camera_config.json`. This file allows you to define webcam streams and snapshot URLs for your printer.
+
+Example configuration:
+
+```json
+{
+  "cameras": [
+    {
+      "name": "Camera 1",
+      "url": "http://192.168.1.217/webcam/?action=stream",
+      "snapshot_url": "http://192.168.1.217/webcam/?action=snapshot"
+    }
+  ],
+  "default_stream_type": "stream"
+}
+```
+
+- `cameras`: Array of camera objects, each with:
+  - `name`: Display name for the camera
+  - `url`: Stream URL (MJPEG stream)
+  - `snapshot_url`: URL for static snapshots
+- `default_stream_type`: Default stream type (`"stream"` or `"snapshot"`)
+
+If the configuration file is missing, the application will use default values (no cameras).
+
+### Macro Categories Configuration
+
+Macro organization is configured in `macro_categories.json`. This file allows you to organize your G-code macros into custom categories for easier navigation in the UI.
+
+Example configuration:
+
+```json
+{
+  "categories": {
+    "Movement": {
+      "macros": ["HOME", "HOME_ALL", "HOME_X", "HOME_Y", "HOME_Z", "MOVE", "PARK", "UNPARK"]
+    },
+    "Temperature": {
+      "macros": ["PREHEAT", "COOLDOWN", "SET_TEMP"]
+    },
+    "Printing": {
+      "macros": ["START_PRINT", "PAUSE", "RESUME", "CANCEL_PRINT", "PRINT_START", "PRINT_END"]
+    },
+    "Other": {
+      "macros": []
+    }
+  },
+  "default_category": "Other",
+  "ignored_macros": ["T0", "T1", "T2", "M104", "M109", "M112"]
+}
+```
+
+- `categories`: Object mapping category names to their macro lists
+- `default_category`: Category name for uncategorized macros
+- `ignored_macros`: List of macro names to exclude from the UI
+
+Macros not listed in any category will be placed in the default category. If the configuration file is missing, all macros will be placed in an "Other" category.
 
 ## Running the Application
 
@@ -96,6 +162,36 @@ flask run --host=0.0.0.0 --port=5000
    - Send custom G-code commands
    - View command history
 
+8. **Camera View**: View webcam streams configured in `camera_config.json`
+
+9. **Macro Categories**: Access organized macros based on `macro_categories.json` configuration
+
+## Plugin System
+
+Klipper UI includes an extensible plugin system that allows you to add custom functionality, panels, and API endpoints. Plugins are automatically loaded from the `plugins/` directory.
+
+### Creating Plugins
+
+Plugins are Python classes that extend the base `Plugin` class. Each plugin should be in its own directory with a `plugin.py` file. See `plugins/README.md` for detailed documentation on creating plugins.
+
+Key features:
+- **Custom Panels**: Add new UI panels with HTML, CSS, and JavaScript
+- **API Endpoints**: Register custom REST API endpoints at `/api/plugins/{plugin_name}/*`
+- **Moonraker Access**: Full access to Moonraker client for printer control
+- **Static Assets**: Include CSS and JavaScript files that are automatically loaded
+
+### Example Plugin Structure
+
+```
+plugins/
+  my_plugin/
+    plugin.py      # Plugin class definition
+    style.css      # Optional: Plugin CSS
+    script.js      # Optional: Plugin JavaScript
+```
+
+Plugins are automatically discovered and loaded when the application starts. See `plugins/README.md` for complete plugin development documentation.
+
 ## API Endpoints
 
 The application provides REST API endpoints:
@@ -115,6 +211,9 @@ The application provides REST API endpoints:
 - `POST /api/print/pause` - Pause print
 - `POST /api/print/resume` - Resume print
 - `POST /api/print/cancel` - Cancel print
+- `GET /api/cameras` - Get camera configuration
+- `GET /api/macros` - Get categorized list of macros
+- `GET /api/plugins/{plugin_name}/*` - Plugin-specific endpoints (varies by plugin)
 
 ## WebSocket Events
 
