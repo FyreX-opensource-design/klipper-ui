@@ -704,9 +704,9 @@ header h1 {
 }
 
 .macro-btn {
-    background: #667eea;
-    color: white;
-    border: none;
+    background: #667eea !important;
+    color: white !important;
+    border: none !important;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 13px;
@@ -716,7 +716,8 @@ header h1 {
 }
 
 .macro-btn:hover {
-    background: #5568d3;
+    background: #5568d3 !important;
+    color: white !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -832,9 +833,7 @@ header h1 {
 }
 
 /* Plugin Panel Styles */
-.plugin-panel {
-    /* Plugin panels inherit from .panel but can override styles */
-}
+/* Plugin panels inherit from .panel but can override styles */
 
 .plugin-panel h2 {
     /* Plugin panel titles */
