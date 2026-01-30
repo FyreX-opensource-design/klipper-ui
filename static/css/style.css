@@ -458,12 +458,13 @@ header h1 {
 }
 
 .btn-danger {
-    background: #ef4444;
-    color: white;
+    background: #ef4444 !important;
+    color: white !important;
 }
 
 .btn-danger:hover {
-    background: #dc2626;
+    background: #dc2626 !important;
+    color: white !important;
 }
 
 .btn-small {
