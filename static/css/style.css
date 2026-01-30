@@ -422,39 +422,43 @@ header h1 {
 }
 
 .btn-primary {
-    background: #667eea;
-    color: white;
+    background: #667eea !important;
+    color: white !important;
 }
 
 .btn-primary:hover {
-    background: #5568d3;
+    background: #5568d3 !important;
+    color: white !important;
 }
 
 .btn-secondary {
-    background: #6b7280;
-    color: white;
+    background: #6b7280 !important;
+    color: white !important;
 }
 
 .btn-secondary:hover {
-    background: #4b5563;
+    background: #4b5563 !important;
+    color: white !important;
 }
 
 .btn-success {
-    background: #10b981;
-    color: white;
+    background: #10b981 !important;
+    color: white !important;
 }
 
 .btn-success:hover {
-    background: #059669;
+    background: #059669 !important;
+    color: white !important;
 }
 
 .btn-warning {
-    background: #f59e0b;
-    color: white;
+    background: #f59e0b !important;
+    color: white !important;
 }
 
 .btn-warning:hover {
-    background: #d97706;
+    background: #d97706 !important;
+    color: white !important;
 }
 
 .btn-danger {
