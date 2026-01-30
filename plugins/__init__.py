@@ -22,11 +22,19 @@ class Plugin:
     
     def get_info(self) -> Dict[str, Any]:
         """Get plugin information"""
+        # Filter routes to only include serializable data (exclude handler functions)
+        serializable_routes = [
+            {
+                'endpoint': route['endpoint'],
+                'methods': route.get('methods', ['GET'])
+            }
+            for route in self.routes
+        ]
         return {
             'name': self.name,
             'enabled': self.enabled,
             'metadata': self.metadata,
-            'routes': self.routes,
+            'routes': serializable_routes,
             'static_files': self.static_files
         }
     
@@ -164,20 +172,30 @@ class PluginManager:
                     handler = route_info['handler']
                     methods = route_info.get('methods', ['GET'])
                     
+                    # Ensure methods is a list
+                    if not isinstance(methods, list):
+                        methods = [methods] if methods else ['GET']
+                    
                     # Bind moonraker_client to handler if it needs it
                     if hasattr(handler, '__code__'):
                         # Check if handler needs moonraker_client
                         import inspect
+                        from functools import wraps
                         sig = inspect.signature(handler)
                         if 'moonraker' in sig.parameters:
                             def make_handler(h, m):
+                                @wraps(h)
                                 def wrapper(*args, **kwargs):
                                     return h(*args, moonraker=m, **kwargs)
                                 return wrapper
                             handler = make_handler(handler, moonraker_client)
                     
-                    app.route(endpoint, methods=methods)(handler)
-                    logger.info(f"Registered route: {endpoint}")
+                    try:
+                        app.route(endpoint, methods=methods)(handler)
+                        logger.info(f"Registered route: {endpoint} with methods {methods}")
+                    except Exception as route_error:
+                        logger.error(f"Failed to register route {endpoint}: {route_error}", exc_info=True)
+                        raise
             except Exception as e:
                 logger.error(f"Error registering plugin {plugin.name}: {e}", exc_info=True)
     

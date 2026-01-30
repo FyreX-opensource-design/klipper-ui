@@ -16,6 +16,31 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadPrinterStats() {
     try {
         const response = await fetch('/api/plugins/example/stats');
+        
+        // Check if response is OK
+        if (!response.ok) {
+            if (response.status === 404) {
+                console.warn('Stats endpoint not found - plugin may need app restart');
+                updateDisplayWithError('Endpoint not found');
+                return;
+            }
+            if (response.status === 415) {
+                console.warn('Unsupported media type - route may not be registered');
+                updateDisplayWithError('Route not registered');
+                return;
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Non-JSON response:', text.substring(0, 100));
+            updateDisplayWithError('Invalid response format');
+            return;
+        }
+        
         const result = await response.json();
         
         if (result.error) {
@@ -30,7 +55,11 @@ async function loadPrinterStats() {
         }
     } catch (error) {
         console.error('Error loading printer stats:', error);
-        updateDisplayWithError('Connection error');
+        if (error.message && error.message.includes('JSON')) {
+            updateDisplayWithError('Server error - restart app?');
+        } else {
+            updateDisplayWithError('Connection error');
+        }
     }
 }
 

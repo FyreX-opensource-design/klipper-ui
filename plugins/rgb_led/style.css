@@ -1,0 +1,398 @@
+/* RGB LED Control Plugin Styles */
+#rgb-led-plugin-panel {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #ffffff;
+}
+
+#rgb-led-plugin-panel h2 {
+    color: #ffffff;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 10px;
+}
+
+.plugin-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.led-control-section {
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.led-control-section label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+/* LED Name Selector */
+.led-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.led-selector > label {
+    margin-bottom: 0;
+    margin-right: 10px;
+}
+
+.led-select {
+    flex: 1;
+    min-width: 150px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ffffff !important;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.led-select:hover {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.led-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
+
+/* Style select options for better visibility */
+.led-select option {
+    background: #1a1a2e;
+    color: #ffffff;
+    padding: 8px;
+}
+
+/* For browsers that support styling the dropdown */
+.led-select::-ms-expand {
+    color: #ffffff;
+}
+
+.led-custom-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.led-custom-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
+
+.led-custom-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 13px;
+    min-width: auto;
+}
+
+/* Color Picker */
+.color-picker-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.color-picker {
+    width: 80px;
+    height: 50px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    background: none;
+    padding: 0;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-picker::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+
+.color-picker::-moz-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+
+/* RGB Sliders */
+.rgb-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.slider-group label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+    font-size: 13px;
+}
+
+.slider-group label span {
+    font-weight: bold;
+    color: #ffffff;
+    min-width: 40px;
+    text-align: right;
+}
+
+.color-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.color-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.color-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+.color-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffffff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.color-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+}
+
+.red-slider::-webkit-slider-thumb {
+    background: #ff0000;
+}
+
+.red-slider::-moz-range-thumb {
+    background: #ff0000;
+}
+
+.green-slider::-webkit-slider-thumb {
+    background: #00ff00;
+}
+
+.green-slider::-moz-range-thumb {
+    background: #00ff00;
+}
+
+.blue-slider::-webkit-slider-thumb {
+    background: #0000ff;
+}
+
+.blue-slider::-moz-range-thumb {
+    background: #0000ff;
+}
+
+/* Brightness Control */
+.brightness-control {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.brightness-control label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+.brightness-control label span {
+    font-weight: bold;
+    color: #ffffff;
+    min-width: 50px;
+    text-align: right;
+}
+
+.brightness-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.9));
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.brightness-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffd700;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.brightness-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+.brightness-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffd700;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.brightness-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+}
+
+/* Preset Colors */
+.preset-colors {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+    gap: 10px;
+}
+
+.preset-color {
+    width: 50px;
+    height: 50px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.preset-color:hover {
+    transform: scale(1.1);
+    border-color: #ffffff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.preset-color:active {
+    transform: scale(0.95);
+}
+
+/* LED Actions */
+.led-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.led-actions .btn {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* Status Message */
+.led-status {
+    min-height: 30px;
+}
+
+.status-message {
+    padding: 10px 15px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.status-message:empty {
+    display: none;
+}
+
+.status-info {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    color: #93c5fd;
+}
+
+.status-success {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.5);
+    color: #6ee7b7;
+}
+
+.status-error {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .led-selector {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .led-select,
+    .led-custom-input {
+        width: 100%;
+    }
+    
+    .preset-grid {
+        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    }
+    
+    .preset-color {
+        width: 40px;
+        height: 40px;
+    }
+}
