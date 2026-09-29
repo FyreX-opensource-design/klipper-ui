@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klipper Config</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="config-editor-page">
+    <div class="container config-editor-container">
+        <header>
+            <div>
+                <h1 id="editorTitle">Klipper Config</h1>
+                <p class="config-editor-subtitle" id="editorSubtitle">Saving writes this file on the printer. Restart Klipper separately if you want the change to take effect.</p>
+            </div>
+        </header>
+
+        <section class="panel config-editor-panel">
+            <div class="config-editor-meta">
+                <span class="config-filename" id="editorFilename"></span>
+            </div>
+            <textarea id="configEditor" class="config-editor-textarea" spellcheck="false"></textarea>
+            <div class="config-editor-status" id="editorStatus"></div>
+            <div class="config-editor-actions">
+                <button class="btn btn-secondary" id="downloadConfigBtn" type="button">Download</button>
+                <button class="btn btn-success" id="saveConfigBtn" type="button">Save</button>
+            </div>
+        </section>
+    </div>
+    <script src="{{ url_for('static', filename='js/klipper-config-editor.js') }}"></script>
+</body>
+</html>

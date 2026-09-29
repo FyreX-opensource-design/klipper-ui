@@ -63,6 +63,17 @@ class Plugin:
     def initialize(self, app, moonraker_client):
         """Initialize the plugin with Flask app and Moonraker client"""
         pass
+    
+    def reload_config(self):
+        """Reload plugin configuration from disk.
+        
+        Plugins that cache config.json in memory should implement _load_config()
+        or override this method so UI edits take effect without a process restart.
+        """
+        if hasattr(self, '_load_config') and callable(self._load_config):
+            self.config = self._load_config()
+            return True
+        return False
 
 
 class PluginManager:

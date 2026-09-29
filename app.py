@@ -3,9 +3,12 @@ Flask application for Klipper printer control via Moonraker API
 Similar to Mainsail/Fluidd functionality
 """
 import os
+import re
 import json
+import tempfile
 import requests
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from urllib.parse import quote
+from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit
 import logging
 from plugins import PluginManager
@@ -20,8 +23,13 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MOONRAKER_URL = os.environ.get('MOONRAKER_URL', 'http://localhost:7125')
 MOONRAKER_WS_URL = os.environ.get('MOONRAKER_WS_URL', 'ws://localhost:7125/websocket')
 
-# Camera configuration
+# Camera and macro configuration
 CAMERA_CONFIG_PATH = os.environ.get('CAMERA_CONFIG_PATH', os.path.join(os.path.dirname(__file__), 'camera_config.json'))
+MACRO_CATEGORIES_PATH = os.environ.get(
+    'MACRO_CATEGORIES_PATH',
+    os.path.join(os.path.dirname(__file__), 'macro_categories.json')
+)
+PLUGIN_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -245,8 +253,31 @@ class MoonrakerClient:
         return self.gcode_command(f'SET_HEATER_TEMPERATURE HEATER={heater} TARGET={target}')
     
     def set_fan_speed(self, fan, speed):
-        """Set fan speed (0-255)"""
-        return self.gcode_command(f'SET_FAN_SPEED FAN={fan} SPEED={speed}')
+        """Set fan speed. UI sends 0-255; Klipper SET_FAN_SPEED uses 0.0-1.0."""
+        try:
+            speed_value = float(speed)
+        except (TypeError, ValueError):
+            return {"error": "Invalid fan speed"}
+        
+        # Accept either 0-1 or 0-255 from the client
+        if speed_value > 1:
+            speed_value = speed_value / 255.0
+        speed_value = max(0.0, min(1.0, speed_value))
+        
+        fan_name = (fan or 'fan').strip()
+        # Moonraker object is "fan_generic tool1"; SET_FAN_SPEED wants just "tool1"
+        if fan_name.startswith('fan_generic '):
+            fan_name = fan_name.split(' ', 1)[1].strip()
+        elif fan_name == 'fan' or fan_name.startswith('fan '):
+            # Standard [fan] part-cooling fan uses M106 (0-255)
+            return self.gcode_command(f'M106 S{int(round(speed_value * 255))}')
+        
+        if not fan_name:
+            return {"error": "Invalid fan name"}
+        
+        if any(ch.isspace() or ch in '"=' for ch in fan_name):
+            return self.gcode_command(f'SET_FAN_SPEED FAN="{fan_name}" SPEED={speed_value:.3f}')
+        return self.gcode_command(f'SET_FAN_SPEED FAN={fan_name} SPEED={speed_value:.3f}')
     
     def home_axis(self, axis='XYZ'):
         """Home specified axes"""
@@ -407,6 +438,74 @@ class MoonrakerClient:
                 macros.append(macro_name)
         
         return sorted(macros)
+    
+    def _moonraker_url(self, endpoint):
+        return f"{self.base_url}{endpoint}"
+    
+    def _quote_relpath(self, relpath):
+        return '/'.join(quote(part, safe='') for part in relpath.split('/') if part)
+    
+    def list_config_directory(self, relpath=''):
+        """List a directory in the Moonraker config root"""
+        moonraker_path = 'config' if not relpath else f'config/{relpath}'
+        return self._request(
+            'GET',
+            '/server/files/directory',
+            params={'path': moonraker_path},
+            timeout=15
+        )
+    
+    def get_config_file(self, relpath):
+        """Download a file from the Moonraker config root"""
+        quoted = self._quote_relpath(relpath)
+        url = self._moonraker_url(f'/server/files/config/{quoted}')
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            return {
+                'content': response.content,
+                'content_type': response.headers.get('Content-Type', 'application/octet-stream')
+            }
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Moonraker config download failed: {e}")
+            return {'error': str(e)}
+    
+    def upload_config_file(self, directory, filename, file_data):
+        """Upload or overwrite a file in the Moonraker config root"""
+        files = {'file': (filename, file_data, 'application/octet-stream')}
+        data = {'root': 'config'}
+        if directory:
+            data['path'] = directory
+        return self._request(
+            'POST',
+            '/server/files/upload',
+            files=files,
+            data=data,
+            timeout=30
+        )
+    
+    def delete_config_file(self, relpath):
+        """Delete a file in the Moonraker config root"""
+        quoted = self._quote_relpath(relpath)
+        return self._request('DELETE', f'/server/files/config/{quoted}', timeout=15)
+    
+    def create_config_directory(self, relpath):
+        """Create a directory in the Moonraker config root"""
+        return self._request(
+            'POST',
+            '/server/files/directory',
+            json={'path': f'config/{relpath}'},
+            timeout=15
+        )
+    
+    def delete_config_directory(self, relpath):
+        """Delete a directory in the Moonraker config root"""
+        return self._request(
+            'DELETE',
+            '/server/files/directory',
+            params={'path': f'config/{relpath}', 'force': 'true'},
+            timeout=15
+        )
 
 
 # Initialize Moonraker client
@@ -746,7 +845,7 @@ def get_cameras():
 
 def load_macro_categories():
     """Load macro categories from config file"""
-    config_path = os.path.join(os.path.dirname(__file__), 'macro_categories.json')
+    config_path = MACRO_CATEGORIES_PATH
     try:
         with open(config_path, 'r') as f:
             return json.load(f)
@@ -824,6 +923,423 @@ def get_plugins():
     return jsonify(plugin_manager.get_plugins_info())
 
 
+@app.route('/api/plugins/<plugin_name>/html')
+def get_plugin_html(plugin_name):
+    """Return a plugin's current panel HTML so the UI can refresh after config apply"""
+    plugin = plugin_manager.get_plugin(plugin_name)
+    if not plugin:
+        return jsonify({'error': 'Plugin not found'}), 404
+    return jsonify({
+        'name': plugin.name,
+        'html': plugin.get_html() or ''
+    })
+
+
+DEFAULT_CAMERA_CONFIG = {
+    "cameras": [],
+    "default_stream_type": "stream"
+}
+
+DEFAULT_MACRO_CONFIG = {
+    "categories": {"Other": {"macros": []}},
+    "default_category": "Other",
+    "ignored_macros": []
+}
+
+
+def write_json_file(path, data):
+    """Atomically write pretty-printed JSON to path"""
+    directory = os.path.dirname(path) or '.'
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix='.config-', suffix='.tmp', dir=directory)
+    try:
+        with os.fdopen(fd, 'w') as tmp_file:
+            json.dump(data, tmp_file, indent=2)
+            tmp_file.write('\n')
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
+def parse_config_payload(data):
+    """Accept a JSON object or a JSON string from the editor"""
+    if data is None:
+        return None, 'No data provided'
+    content = data.get('content') if isinstance(data, dict) else None
+    if content is None:
+        return None, 'No content provided'
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except json.JSONDecodeError as e:
+            return None, f'Invalid JSON: {e}'
+    if not isinstance(content, (dict, list)):
+        return None, 'Config must be a JSON object or array'
+    return content, None
+
+
+def resolve_editable_config(config_id):
+    """Resolve an editable config id to a file path and metadata"""
+    if config_id == 'camera':
+        return {
+            'id': 'camera',
+            'name': 'Cameras',
+            'description': 'Camera stream URLs and defaults',
+            'type': 'camera',
+            'filename': os.path.basename(CAMERA_CONFIG_PATH),
+            'path': CAMERA_CONFIG_PATH,
+            'default': DEFAULT_CAMERA_CONFIG
+        }
+    if config_id == 'macros':
+        return {
+            'id': 'macros',
+            'name': 'Macros',
+            'description': 'Macro categories and ignored macros',
+            'type': 'macros',
+            'filename': os.path.basename(MACRO_CATEGORIES_PATH),
+            'path': MACRO_CATEGORIES_PATH,
+            'default': DEFAULT_MACRO_CONFIG
+        }
+    if config_id.startswith('plugin/'):
+        plugin_name = config_id.split('/', 1)[1]
+        if not PLUGIN_NAME_RE.match(plugin_name):
+            return None
+        plugin = plugin_manager.get_plugin(plugin_name)
+        if not plugin:
+            return None
+        display_name = plugin.metadata.get('description') or plugin.name
+        return {
+            'id': f'plugin/{plugin.name}',
+            'name': plugin.name,
+            'description': display_name,
+            'type': 'plugin',
+            'plugin': plugin.name,
+            'filename': f'plugins/{plugin.name}/config.json',
+            'path': os.path.join(plugin.path, 'config.json'),
+            'default': {}
+        }
+    return None
+
+
+def list_editable_configs():
+    """Build the list of configs the UI can edit"""
+    configs = [
+        {
+            'id': 'camera',
+            'name': 'Cameras',
+            'description': 'Camera stream URLs and defaults',
+            'type': 'camera',
+            'filename': os.path.basename(CAMERA_CONFIG_PATH)
+        },
+        {
+            'id': 'macros',
+            'name': 'Macros',
+            'description': 'Macro categories and ignored macros',
+            'type': 'macros',
+            'filename': os.path.basename(MACRO_CATEGORIES_PATH)
+        }
+    ]
+    for name, plugin in plugin_manager.plugins.items():
+        config_path = os.path.join(plugin.path, 'config.json')
+        if not os.path.exists(config_path):
+            continue
+        configs.append({
+            'id': f'plugin/{name}',
+            'name': name,
+            'description': plugin.metadata.get('description') or f'{name} plugin configuration',
+            'type': 'plugin',
+            'plugin': name,
+            'filename': f'plugins/{name}/config.json'
+        })
+    return configs
+
+
+def read_editable_config(info):
+    """Read a config file, falling back to defaults if missing"""
+    try:
+        with open(info['path'], 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return info.get('default', {})
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Error parsing config: {e}") from e
+
+
+def apply_editable_config(info):
+    """Reload in-memory config so the running UI picks up disk changes"""
+    if info['type'] == 'plugin':
+        plugin = plugin_manager.get_plugin(info['plugin'])
+        if plugin:
+            plugin.reload_config()
+    # Camera and macro configs are read from disk on each request
+
+
+@app.route('/api/configs')
+def list_configs():
+    """List camera, macro, and plugin configs that can be edited in the UI"""
+    return jsonify({'configs': list_editable_configs()})
+
+
+@app.route('/api/configs/<path:config_id>')
+def get_editable_config(config_id):
+    """Get a config file's current JSON content"""
+    info = resolve_editable_config(config_id)
+    if not info:
+        return jsonify({'error': 'Unknown config'}), 404
+    try:
+        content = read_editable_config(info)
+        return jsonify({
+            'id': info['id'],
+            'name': info['name'],
+            'description': info.get('description', ''),
+            'type': info['type'],
+            'filename': info['filename'],
+            'content': content
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Error reading config {config_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/configs/<path:config_id>', methods=['PUT'])
+def save_editable_config(config_id):
+    """Save a config file from the editor"""
+    info = resolve_editable_config(config_id)
+    if not info:
+        return jsonify({'error': 'Unknown config'}), 404
+    content, error = parse_config_payload(request.json)
+    if error:
+        return jsonify({'error': error}), 400
+    try:
+        write_json_file(info['path'], content)
+        return jsonify({
+            'status': 'ok',
+            'id': info['id'],
+            'content': content
+        })
+    except Exception as e:
+        logger.error(f"Error saving config {config_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/configs/<path:config_id>/apply', methods=['POST'])
+def apply_config(config_id):
+    """Save (optional) and reload a config so the main UI can refresh"""
+    info = resolve_editable_config(config_id)
+    if not info:
+        return jsonify({'error': 'Unknown config'}), 404
+    
+    data = request.json or {}
+    content = None
+    if 'content' in data:
+        content, error = parse_config_payload(data)
+        if error:
+            return jsonify({'error': error}), 400
+        try:
+            write_json_file(info['path'], content)
+        except Exception as e:
+            logger.error(f"Error saving config {config_id}: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    try:
+        apply_editable_config(info)
+        return jsonify({
+            'status': 'ok',
+            'id': info['id'],
+            'type': info['type'],
+            'plugin': info.get('plugin'),
+            'content': content
+        })
+    except Exception as e:
+        logger.error(f"Error applying config {config_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/config-editor')
+def config_editor():
+    """Standalone config editor opened in a new window"""
+    return render_template('config_editor.html')
+
+
+@app.route('/klipper-config-editor')
+def klipper_config_editor():
+    """Standalone editor for a printer Klipper/Moonraker config file"""
+    return render_template('klipper_config_editor.html')
+
+
+def sanitize_config_relpath(path, allow_empty=False):
+    """Return a safe path relative to the Moonraker config root, or None if invalid"""
+    if path is None:
+        path = ''
+    if not isinstance(path, str):
+        return None
+    path = path.replace('\\', '/').strip()
+    if path in ('', '.', '/'):
+        return '' if allow_empty else None
+    parts = []
+    for part in path.strip('/').split('/'):
+        if part in ('', '.'):
+            continue
+        if part == '..' or '\x00' in part:
+            return None
+        parts.append(part)
+    if not parts:
+        return '' if allow_empty else None
+    return '/'.join(parts)
+
+
+def moonraker_error_response(result, fallback='Moonraker request failed'):
+    error = result.get('error') if isinstance(result, dict) else fallback
+    return jsonify({'error': error or fallback}), 502
+
+
+@app.route('/api/klipper-config')
+def list_klipper_config():
+    """List files and folders in the printer's Moonraker config root"""
+    relpath = sanitize_config_relpath(request.args.get('path', ''), allow_empty=True)
+    if relpath is None:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.list_config_directory(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    payload = result.get('result', result)
+    return jsonify({
+        'path': relpath,
+        'dirs': payload.get('dirs', []),
+        'files': payload.get('files', []),
+        'disk_usage': payload.get('disk_usage', {}),
+        'root_info': payload.get('root_info', {}),
+        'writable': 'w' in (payload.get('root_info') or {}).get('permissions', 'rw')
+    })
+
+
+@app.route('/api/klipper-config/contents')
+def get_klipper_config_contents():
+    """Read a printer config file as UTF-8 text for the editor"""
+    relpath = sanitize_config_relpath(request.args.get('path', ''))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.get_config_file(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    try:
+        text = result['content'].decode('utf-8')
+    except UnicodeDecodeError:
+        return jsonify({
+            'error': 'File is not valid UTF-8 text. Download it instead.',
+            'binary': True,
+            'path': relpath
+        }), 415
+    return jsonify({
+        'path': relpath,
+        'name': os.path.basename(relpath),
+        'content': text
+    })
+
+
+@app.route('/api/klipper-config/contents', methods=['PUT', 'POST'])
+def write_klipper_config_contents():
+    """Create or overwrite a printer config file. Does not restart Klipper."""
+    data = request.json or {}
+    relpath = sanitize_config_relpath(data.get('path'))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    if 'content' not in data:
+        return jsonify({'error': 'No content provided'}), 400
+    content = data.get('content')
+    if not isinstance(content, str):
+        return jsonify({'error': 'Content must be a string'}), 400
+    directory, filename = os.path.split(relpath)
+    result = moonraker.upload_config_file(directory, filename, content.encode('utf-8'))
+    if result.get('error'):
+        return moonraker_error_response(result)
+    return jsonify({
+        'status': 'ok',
+        'path': relpath,
+        'result': result.get('result', result)
+    }), 201 if request.method == 'POST' else 200
+
+
+@app.route('/api/klipper-config/contents', methods=['DELETE'])
+def delete_klipper_config_file():
+    """Delete a printer config file"""
+    relpath = sanitize_config_relpath((request.json or {}).get('path') or request.args.get('path'))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.delete_config_file(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    return jsonify({'status': 'ok', 'path': relpath, 'result': result.get('result', result)})
+
+
+@app.route('/api/klipper-config/directory', methods=['POST'])
+def create_klipper_config_directory():
+    """Create a folder in the printer config root"""
+    relpath = sanitize_config_relpath((request.json or {}).get('path'))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.create_config_directory(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    return jsonify({'status': 'ok', 'path': relpath, 'result': result.get('result', result)}), 201
+
+
+@app.route('/api/klipper-config/directory', methods=['DELETE'])
+def delete_klipper_config_directory():
+    """Delete a folder in the printer config root"""
+    relpath = sanitize_config_relpath((request.json or {}).get('path') or request.args.get('path'))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.delete_config_directory(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    return jsonify({'status': 'ok', 'path': relpath, 'result': result.get('result', result)})
+
+
+@app.route('/api/klipper-config/upload', methods=['POST'])
+def upload_klipper_config_file():
+    """Upload a file into the current printer config directory"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'No file selected'}), 400
+    directory = sanitize_config_relpath(request.form.get('path', ''), allow_empty=True)
+    if directory is None:
+        return jsonify({'error': 'Invalid path'}), 400
+    filename = os.path.basename(file.filename.replace('\\', '/'))
+    if not filename or filename in ('.', '..') or '\x00' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    result = moonraker.upload_config_file(directory, filename, file.read())
+    if result.get('error'):
+        return moonraker_error_response(result)
+    relpath = f'{directory}/{filename}' if directory else filename
+    return jsonify({'status': 'ok', 'path': relpath, 'result': result.get('result', result)}), 201
+
+
+@app.route('/api/klipper-config/download')
+def download_klipper_config_file():
+    """Download a printer config file"""
+    relpath = sanitize_config_relpath(request.args.get('path', ''))
+    if not relpath:
+        return jsonify({'error': 'Invalid path'}), 400
+    result = moonraker.get_config_file(relpath)
+    if result.get('error'):
+        return moonraker_error_response(result)
+    filename = os.path.basename(relpath)
+    return Response(
+        result['content'],
+        mimetype='application/octet-stream',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    )
+
+
 @app.route('/api/plugins/<plugin_name>/static/<path:filename>')
 def serve_plugin_static(plugin_name, filename):
     """Serve static files from plugins"""
@@ -873,4 +1389,4 @@ plugin_manager.register_plugins(app, moonraker)
 if __name__ == '__main__':
     logger.info(f"Starting Flask app, connecting to Moonraker at {MOONRAKER_URL}")
     logger.info(f"Loaded {len(plugin_manager.plugins)} plugin(s)")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)

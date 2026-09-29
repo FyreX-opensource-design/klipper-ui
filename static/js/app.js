@@ -1637,6 +1637,390 @@ function toggleCameraStream(cameraId, streamUrl, snapshotUrl) {
     }
 }
 
+const CONFIG_MESSAGE_TYPE = 'klipper-config-applied';
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+async function loadConfigList() {
+    const container = document.getElementById('configList');
+    if (!container) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/configs`);
+        const result = await response.json();
+        if (result.error) {
+            container.innerHTML = `<p style="color: red;">Error loading configs: ${escapeHtml(result.error)}</p>`;
+            return;
+        }
+
+        const configs = result.configs || [];
+        if (configs.length === 0) {
+            container.innerHTML = '<p>No editable configs found</p>';
+            return;
+        }
+
+        container.innerHTML = configs.map((config) => {
+            const id = escapeHtml(config.id);
+            const name = escapeHtml(config.name || config.id);
+            const description = escapeHtml(config.description || '');
+            const filename = escapeHtml(config.filename || '');
+            return `
+                <button type="button" class="config-list-item" onclick="openConfigEditor('${id}')">
+                    <span class="config-list-name">${name}</span>
+                    <span class="config-list-description">${description}</span>
+                    <span class="config-list-filename">${filename}</span>
+                </button>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading configs:', error);
+        container.innerHTML = '<p style="color: red;">Failed to load configs</p>';
+    }
+}
+
+function openConfigEditor(configId) {
+    const url = `${API_BASE}/config-editor?id=${encodeURIComponent(configId)}`;
+    const features = 'width=900,height=760,resizable=yes,scrollbars=yes';
+    const editorWindow = window.open(url, `klipper-config-${configId}`, features);
+    if (!editorWindow) {
+        alert('Please allow popups to edit configs in a new window.');
+    }
+}
+
+async function refreshPluginPanel(pluginName) {
+    try {
+        const response = await fetch(`${API_BASE}/api/plugins/${encodeURIComponent(pluginName)}/html`);
+        const result = await response.json();
+        if (!result.error && result.html) {
+            const temp = document.createElement('div');
+            temp.innerHTML = result.html.trim();
+            const newPanel = temp.querySelector('.plugin-panel, section.panel') || temp.firstElementChild;
+            if (newPanel && newPanel.id) {
+                const existing = document.getElementById(newPanel.id);
+                if (existing) {
+                    existing.replaceWith(newPanel);
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`Error refreshing plugin panel ${pluginName}:`, error);
+    }
+
+    window.dispatchEvent(new CustomEvent('klipper-plugin-config-reloaded', {
+        detail: { plugin: pluginName }
+    }));
+}
+
+function handleConfigApplied(configId) {
+    if (configId === 'camera') {
+        loadCameras();
+        addConsoleMessage('Camera config reloaded', 'response');
+        return;
+    }
+    if (configId === 'macros') {
+        loadMacros();
+        addConsoleMessage('Macro config reloaded', 'response');
+        return;
+    }
+    if (configId && configId.startsWith('plugin/')) {
+        const pluginName = configId.slice('plugin/'.length);
+        refreshPluginPanel(pluginName);
+        addConsoleMessage(`Plugin config reloaded: ${pluginName}`, 'response');
+    }
+}
+
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type === CONFIG_MESSAGE_TYPE) {
+        handleConfigApplied(event.data.configId);
+    }
+    if (event.data?.type === 'klipper-printer-config-saved') {
+        loadKlipperConfigList(klipperConfigPath);
+        addConsoleMessage(`Printer config saved: ${event.data.path}`, 'response');
+    }
+});
+
+try {
+    const configChannel = new BroadcastChannel('klipper-ui-config');
+    configChannel.onmessage = (event) => {
+        if (event.data?.type === CONFIG_MESSAGE_TYPE) {
+            handleConfigApplied(event.data.configId);
+        }
+        if (event.data?.type === 'klipper-printer-config-saved') {
+            loadKlipperConfigList(klipperConfigPath);
+            addConsoleMessage(`Printer config saved: ${event.data.path}`, 'response');
+        }
+    };
+} catch (error) {
+    console.debug('BroadcastChannel unavailable:', error);
+}
+
+let klipperConfigPath = '';
+let klipperConfigWritable = true;
+let klipperConfigListBound = false;
+
+function joinKlipperConfigPath(directory, name) {
+    return directory ? `${directory}/${name}` : name;
+}
+
+function parentKlipperConfigPath(path) {
+    if (!path) return '';
+    const parts = path.split('/');
+    parts.pop();
+    return parts.join('/');
+}
+
+function formatConfigSize(bytes) {
+    const size = Number(bytes) || 0;
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setKlipperConfigWritable(writable) {
+    klipperConfigWritable = writable !== false;
+    ['klipperConfigNewFileBtn', 'klipperConfigNewFolderBtn', 'klipperConfigUploadBtn'].forEach((id) => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !klipperConfigWritable;
+    });
+}
+
+function bindKlipperConfigUi() {
+    if (klipperConfigListBound) return;
+    klipperConfigListBound = true;
+
+    const list = document.getElementById('klipperConfigList');
+    const uploadInput = document.getElementById('klipperConfigUploadInput');
+    document.getElementById('klipperConfigUpBtn')?.addEventListener('click', () => {
+        loadKlipperConfigList(parentKlipperConfigPath(klipperConfigPath));
+    });
+    document.getElementById('klipperConfigRefreshBtn')?.addEventListener('click', () => {
+        loadKlipperConfigList(klipperConfigPath);
+    });
+    document.getElementById('klipperConfigNewFileBtn')?.addEventListener('click', createKlipperConfigFile);
+    document.getElementById('klipperConfigNewFolderBtn')?.addEventListener('click', createKlipperConfigFolder);
+    document.getElementById('klipperConfigUploadBtn')?.addEventListener('click', () => {
+        uploadInput?.click();
+    });
+    uploadInput?.addEventListener('change', uploadKlipperConfigFile);
+    list?.addEventListener('click', handleKlipperConfigListClick);
+}
+
+async function loadKlipperConfigList(path = klipperConfigPath) {
+    const container = document.getElementById('klipperConfigList');
+    const pathEl = document.getElementById('klipperConfigPath');
+    if (!container) return;
+
+    bindKlipperConfigUi();
+    klipperConfigPath = path || '';
+    if (pathEl) {
+        pathEl.textContent = klipperConfigPath ? `config/${klipperConfigPath}` : 'config/';
+    }
+
+    const upBtn = document.getElementById('klipperConfigUpBtn');
+    if (upBtn) upBtn.disabled = !klipperConfigPath;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/klipper-config?path=${encodeURIComponent(klipperConfigPath)}`);
+        const result = await response.json();
+        if (!response.ok || result.error) {
+            container.innerHTML = `<p style="color: red;">Error loading printer config: ${escapeHtml(result.error || response.statusText)}</p>`;
+            return;
+        }
+
+        setKlipperConfigWritable(result.writable);
+        const dirs = result.dirs || [];
+        const files = result.files || [];
+        if (dirs.length === 0 && files.length === 0) {
+            container.innerHTML = '<p>This folder is empty</p>';
+            return;
+        }
+
+        const dirHtml = dirs
+            .slice()
+            .sort((a, b) => (a.dirname || '').localeCompare(b.dirname || ''))
+            .map((dir) => {
+                const name = dir.dirname || '';
+                const fullPath = joinKlipperConfigPath(klipperConfigPath, name);
+                return `
+                    <div class="klipper-config-item" data-kind="dir" data-path="${escapeHtml(fullPath)}">
+                        <div class="klipper-config-item-main">
+                            <span class="klipper-config-icon">📁</span>
+                            <span class="klipper-config-name">${escapeHtml(name)}</span>
+                        </div>
+                        <div class="klipper-config-item-actions">
+                            <button type="button" class="btn btn-small btn-danger" data-action="delete"${klipperConfigWritable ? '' : ' disabled'}>Delete</button>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+
+        const fileHtml = files
+            .slice()
+            .sort((a, b) => (a.filename || '').localeCompare(b.filename || ''))
+            .map((file) => {
+                const name = file.filename || '';
+                const fullPath = joinKlipperConfigPath(klipperConfigPath, name);
+                return `
+                    <div class="klipper-config-item" data-kind="file" data-path="${escapeHtml(fullPath)}">
+                        <div class="klipper-config-item-main">
+                            <span class="klipper-config-icon">📄</span>
+                            <span class="klipper-config-name">${escapeHtml(name)}</span>
+                            <span class="klipper-config-meta">${formatConfigSize(file.size)}</span>
+                        </div>
+                        <div class="klipper-config-item-actions">
+                            <button type="button" class="btn btn-small btn-secondary" data-action="download">Download</button>
+                            <button type="button" class="btn btn-small btn-danger" data-action="delete"${klipperConfigWritable ? '' : ' disabled'}>Delete</button>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+
+        container.innerHTML = dirHtml + fileHtml;
+    } catch (error) {
+        console.error('Error loading Klipper config list:', error);
+        container.innerHTML = '<p style="color: red;">Failed to load printer config files</p>';
+    }
+}
+
+function openKlipperConfigEditor(path) {
+    const url = `${API_BASE}/klipper-config-editor?path=${encodeURIComponent(path)}`;
+    const editorWindow = window.open(url, `klipper-printer-cfg-${path}`, 'width=960,height=800,resizable=yes,scrollbars=yes');
+    if (!editorWindow) {
+        alert('Please allow popups to edit printer config files in a new window.');
+    }
+}
+
+function downloadKlipperConfigFile(path) {
+    window.location.href = `${API_BASE}/api/klipper-config/download?path=${encodeURIComponent(path)}`;
+}
+
+async function handleKlipperConfigListClick(event) {
+    const item = event.target.closest('[data-kind]');
+    if (!item) return;
+    const path = item.dataset.path;
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'download') {
+        event.preventDefault();
+        downloadKlipperConfigFile(path);
+        return;
+    }
+    if (action === 'delete') {
+        event.preventDefault();
+        await deleteKlipperConfigItem(path, item.dataset.kind);
+        return;
+    }
+    if (item.dataset.kind === 'dir') {
+        loadKlipperConfigList(path);
+        return;
+    }
+    openKlipperConfigEditor(path);
+}
+
+async function createKlipperConfigFile() {
+    const name = prompt('New config file name (for example extras.cfg):');
+    if (!name) return;
+    const path = joinKlipperConfigPath(klipperConfigPath, name.trim());
+    try {
+        const response = await fetch(`${API_BASE}/api/klipper-config/contents`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, content: '' })
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `Failed to create file (${response.status})`);
+        }
+        addConsoleMessage(`Created config file: ${path}`, 'response');
+        await loadKlipperConfigList(klipperConfigPath);
+        openKlipperConfigEditor(path);
+    } catch (error) {
+        console.error('Error creating config file:', error);
+        alert(`Failed to create file: ${error.message}`);
+    }
+}
+
+async function createKlipperConfigFolder() {
+    const name = prompt('New folder name:');
+    if (!name) return;
+    const path = joinKlipperConfigPath(klipperConfigPath, name.trim());
+    try {
+        const response = await fetch(`${API_BASE}/api/klipper-config/directory`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `Failed to create folder (${response.status})`);
+        }
+        addConsoleMessage(`Created config folder: ${path}`, 'response');
+        await loadKlipperConfigList(klipperConfigPath);
+    } catch (error) {
+        console.error('Error creating config folder:', error);
+        alert(`Failed to create folder: ${error.message}`);
+    }
+}
+
+async function uploadKlipperConfigFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', klipperConfigPath);
+    try {
+        const response = await fetch(`${API_BASE}/api/klipper-config/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `Failed to upload (${response.status})`);
+        }
+        addConsoleMessage(`Uploaded config file: ${file.name}`, 'response');
+        await loadKlipperConfigList(klipperConfigPath);
+    } catch (error) {
+        console.error('Error uploading config file:', error);
+        alert(`Failed to upload file: ${error.message}`);
+    }
+}
+
+async function deleteKlipperConfigItem(path, kind) {
+    const label = kind === 'dir' ? 'folder' : 'file';
+    if (!confirm(`Delete this ${label} from the printer?\n\n${path}`)) {
+        return;
+    }
+    const endpoint = kind === 'dir' ? '/api/klipper-config/directory' : '/api/klipper-config/contents';
+    try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `Failed to delete (${response.status})`);
+        }
+        addConsoleMessage(`Deleted config ${label}: ${path}`, 'response');
+        await loadKlipperConfigList(klipperConfigPath);
+    } catch (error) {
+        console.error('Error deleting config item:', error);
+        alert(`Failed to delete ${label}: ${error.message}`);
+    }
+}
+
+window.openKlipperConfigEditor = openKlipperConfigEditor;
+window.openConfigEditor = openConfigEditor;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Set default movement mode to relative
@@ -1647,6 +2031,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loadMacros();
         loadQueue();
         loadCameras();
+        loadConfigList();
+        loadKlipperConfigList();
         checkPrinterErrors();
         // Request status updates every 2 seconds (throttled internally)
         setInterval(requestStatus, 2000);

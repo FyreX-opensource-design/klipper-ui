@@ -238,6 +238,30 @@
                 </div>
             </section>
 
+            <!-- Configuration -->
+            <section class="panel config-panel">
+                <h2>Configuration</h2>
+                <p class="config-panel-hint">Select a UI config to edit it in a new window. Save &amp; Apply reloads it in this UI.</p>
+                <div class="config-list" id="configList">
+                    <p>Loading configs...</p>
+                </div>
+
+                <h3>Klipper Config</h3>
+                <p class="config-panel-hint">Browse the printer's Moonraker config files. Saving writes the file on the printer and does not restart Klipper.</p>
+                <div class="klipper-config-toolbar">
+                    <button type="button" class="btn btn-small btn-secondary" id="klipperConfigUpBtn">Up</button>
+                    <button type="button" class="btn btn-small btn-secondary" id="klipperConfigRefreshBtn">Refresh</button>
+                    <button type="button" class="btn btn-small btn-primary" id="klipperConfigNewFileBtn">New File</button>
+                    <button type="button" class="btn btn-small btn-primary" id="klipperConfigNewFolderBtn">New Folder</button>
+                    <button type="button" class="btn btn-small btn-primary" id="klipperConfigUploadBtn">Upload</button>
+                    <input type="file" id="klipperConfigUploadInput" style="display: none;">
+                </div>
+                <div class="klipper-config-path" id="klipperConfigPath">config/</div>
+                <div class="klipper-config-list" id="klipperConfigList">
+                    <p>Loading printer config files...</p>
+                </div>
+            </section>
+
             <!-- File Management -->
             <section class="panel file-panel">
                 <h2>File Management</h2>
