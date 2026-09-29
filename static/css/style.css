@@ -421,6 +421,13 @@ header h1 {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-primary {
     background: #667eea !important;
     color: white !important;
@@ -851,6 +858,212 @@ header h1 {
     background: transparent;
     padding: 0;
     box-shadow: none;
+}
+
+.config-panel-hint {
+    color: #6b7280;
+    font-size: 14px;
+    margin: -8px 0 16px 0;
+}
+
+.config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.config-list-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.config-list-item:hover {
+    border-color: #667eea;
+    background: #eef2ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.15);
+}
+
+.config-list-name {
+    font-weight: 700;
+    color: #111827;
+    font-size: 15px;
+}
+
+.config-list-description {
+    color: #4b5563;
+    font-size: 13px;
+}
+
+.config-list-filename {
+    color: #9ca3af;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.config-editor-page {
+    padding: 20px;
+}
+
+.config-editor-container {
+    max-width: 960px;
+}
+
+.config-editor-subtitle {
+    margin-top: 6px;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.config-editor-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: calc(100vh - 180px);
+}
+
+.config-editor-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.config-filename {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: #4b5563;
+    background: #f3f4f6;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.config-editor-textarea {
+    flex: 1;
+    min-height: 420px;
+    width: 100%;
+    padding: 14px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    color: #111827;
+    background: #f9fafb;
+}
+
+.config-editor-textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    background: white;
+}
+
+.config-editor-textarea.invalid {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.config-editor-status {
+    min-height: 20px;
+    font-size: 14px;
+    color: #4b5563;
+}
+
+.config-editor-status.status-success {
+    color: #059669;
+}
+
+.config-editor-status.status-error {
+    color: #dc2626;
+}
+
+.config-editor-status.status-info {
+    color: #4b5563;
+}
+
+.config-editor-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.klipper-config-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 10px 0;
+}
+
+.klipper-config-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    color: #4b5563;
+    background: #f3f4f6;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+
+.klipper-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.klipper-config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.klipper-config-item:hover {
+    border-color: #667eea;
+    background: #eef2ff;
+}
+
+.klipper-config-item-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.klipper-config-name {
+    font-weight: 600;
+    color: #111827;
+    word-break: break-all;
+}
+
+.klipper-config-meta {
+    color: #9ca3af;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.klipper-config-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 @media (max-width: 768px) {

@@ -271,3 +271,10 @@ window.preheatExecutePreset = preheatExecutePreset;
 window.preheatExecutePresetFromButton = preheatExecutePresetFromButton;
 window.preheatExecuteCustom = preheatExecuteCustom;
 window.preheatRefreshToolheads = preheatRefreshToolheads;
+window.initializePreheatPlugin = initializePreheatPlugin;
+
+window.addEventListener('klipper-plugin-config-reloaded', (event) => {
+    if (event.detail?.plugin === 'preheat') {
+        initializePreheatPlugin();
+    }
+});
