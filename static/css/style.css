@@ -947,6 +947,53 @@ header h1 {
     border-radius: 999px;
 }
 
+.config-editor-lang {
+    font-size: 12px;
+    font-weight: 600;
+    color: #667eea;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.config-editor-host {
+    flex: 1;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+}
+
+.config-editor-host .CodeMirror {
+    flex: 1;
+    min-height: 420px;
+    height: auto;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #111827;
+    background: #f9fafb;
+}
+
+.config-editor-host .CodeMirror-focused {
+    border-color: #667eea;
+    background: white;
+}
+
+.config-editor-host.invalid .CodeMirror {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.config-editor-host .CodeMirror-gutters {
+    background: #eef2ff;
+    border-right: 1px solid #e5e7eb;
+}
+
+.config-editor-host .CodeMirror-linenumber {
+    color: #9ca3af;
+}
+
 .config-editor-textarea {
     flex: 1;
     min-height: 420px;

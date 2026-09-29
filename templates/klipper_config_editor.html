@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Klipper Config</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="config-editor-page">
@@ -18,8 +19,11 @@
         <section class="panel config-editor-panel">
             <div class="config-editor-meta">
                 <span class="config-filename" id="editorFilename"></span>
+                <span class="config-editor-lang" id="editorLanguage"></span>
             </div>
-            <textarea id="configEditor" class="config-editor-textarea" spellcheck="false"></textarea>
+            <div class="config-editor-host">
+                <textarea id="configEditor" class="config-editor-textarea" spellcheck="false"></textarea>
+            </div>
             <div class="config-editor-status" id="editorStatus"></div>
             <div class="config-editor-actions">
                 <button class="btn btn-secondary" id="downloadConfigBtn" type="button">Download</button>
@@ -27,6 +31,13 @@
             </div>
         </section>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/properties/properties.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="{{ url_for('static', filename='js/editor-highlight.js') }}"></script>
     <script src="{{ url_for('static', filename='js/klipper-config-editor.js') }}"></script>
 </body>
 </html>

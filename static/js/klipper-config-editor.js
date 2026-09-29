@@ -6,12 +6,14 @@ const filePath = params.get('path') || '';
 
 const titleEl = document.getElementById('editorTitle');
 const filenameEl = document.getElementById('editorFilename');
+const languageEl = document.getElementById('editorLanguage');
 const editorEl = document.getElementById('configEditor');
 const statusEl = document.getElementById('editorStatus');
 const saveBtn = document.getElementById('saveConfigBtn');
 const downloadBtn = document.getElementById('downloadConfigBtn');
 
 let savedRaw = '';
+let highlighted = null;
 
 function setStatus(message, type = 'info') {
     if (!statusEl) return;
@@ -21,6 +23,14 @@ function setStatus(message, type = 'info') {
 
 function fileNameFromPath(path) {
     return path.split('/').pop() || path;
+}
+
+function getEditorValue() {
+    return getHighlightedEditorValue(highlighted?.editor, editorEl);
+}
+
+function setEditorValue(value) {
+    setHighlightedEditorValue(highlighted?.editor, editorEl, value);
 }
 
 function notifyMainWindow() {
@@ -41,10 +51,15 @@ function notifyMainWindow() {
 async function loadFile() {
     if (!filePath) {
         setStatus('No file selected. Close this window and choose a config file from the main UI.', 'error');
-        editorEl.disabled = true;
+        if (editorEl) editorEl.disabled = true;
         saveBtn.disabled = true;
         downloadBtn.disabled = true;
         return;
+    }
+
+    highlighted = createHighlightedEditor(editorEl, filePath);
+    if (languageEl) {
+        languageEl.textContent = highlighted?.language.label || editorLanguageForPath(filePath).label;
     }
 
     titleEl.textContent = fileNameFromPath(filePath);
@@ -57,13 +72,18 @@ async function loadFile() {
         if (!response.ok || result.error) {
             throw new Error(result.error || `Failed to load file (${response.status})`);
         }
-        editorEl.value = result.content ?? '';
-        savedRaw = editorEl.value;
+        setEditorValue(result.content ?? '');
+        savedRaw = getEditorValue();
         setStatus('Loaded from printer. Save writes the file; it does not restart Klipper.', 'info');
+        requestAnimationFrame(() => highlighted?.editor.refresh());
     } catch (error) {
         console.error('Error loading Klipper config:', error);
         setStatus(`Error: ${error.message}`, 'error');
-        editorEl.disabled = true;
+        if (highlighted?.editor) {
+            highlighted.editor.setOption('readOnly', true);
+        } else if (editorEl) {
+            editorEl.disabled = true;
+        }
         saveBtn.disabled = true;
     }
 }
@@ -71,19 +91,20 @@ async function loadFile() {
 async function saveFile() {
     saveBtn.disabled = true;
     try {
+        const content = getEditorValue();
         const response = await fetch(`${API_BASE}/api/klipper-config/contents`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 path: filePath,
-                content: editorEl.value
+                content
             })
         });
         const result = await response.json();
         if (!response.ok || result.error) {
             throw new Error(result.error || `Failed to save (${response.status})`);
         }
-        savedRaw = editorEl.value;
+        savedRaw = content;
         notifyMainWindow();
         setStatus('Saved on the printer. Restart Klipper separately to apply.', 'success');
     } catch (error) {
@@ -106,7 +127,7 @@ if (downloadBtn) {
 }
 
 window.addEventListener('beforeunload', (event) => {
-    if (editorEl && editorEl.value !== savedRaw) {
+    if (getEditorValue() !== savedRaw) {
         event.preventDefault();
         event.returnValue = '';
     }

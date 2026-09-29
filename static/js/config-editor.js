@@ -7,12 +7,15 @@ const configId = params.get('id') || '';
 const titleEl = document.getElementById('editorTitle');
 const subtitleEl = document.getElementById('editorSubtitle');
 const filenameEl = document.getElementById('editorFilename');
+const languageEl = document.getElementById('editorLanguage');
 const editorEl = document.getElementById('configEditor');
+const editorHost = document.querySelector('.config-editor-host');
 const statusEl = document.getElementById('editorStatus');
 const saveBtn = document.getElementById('saveConfigBtn');
 const applyBtn = document.getElementById('applyConfigBtn');
 
 let savedRaw = '';
+let highlighted = null;
 
 function setStatus(message, type = 'info') {
     if (!statusEl) return;
@@ -24,8 +27,16 @@ function updateWindowTitle(name) {
     document.title = name ? `${name} — Config Editor` : 'Config Editor';
 }
 
+function getEditorValue() {
+    return getHighlightedEditorValue(highlighted?.editor, editorEl);
+}
+
+function setEditorValue(value) {
+    setHighlightedEditorValue(highlighted?.editor, editorEl, value);
+}
+
 function parseEditorContent() {
-    const raw = editorEl.value;
+    const raw = getEditorValue();
     try {
         return { content: JSON.parse(raw), error: null };
     } catch (error) {
@@ -35,7 +46,8 @@ function parseEditorContent() {
 
 function markValidity() {
     const { error } = parseEditorContent();
-    editorEl.classList.toggle('invalid', Boolean(error));
+    editorEl?.classList.toggle('invalid', Boolean(error));
+    editorHost?.classList.toggle('invalid', Boolean(error));
     if (error) {
         setStatus(`Invalid JSON: ${error}`, 'error');
     } else if (statusEl.classList.contains('status-error')) {
@@ -61,7 +73,7 @@ function notifyMainWindow(appliedId) {
 async function loadConfig() {
     if (!configId) {
         setStatus('No config selected. Close this window and choose a config from the main UI.', 'error');
-        editorEl.disabled = true;
+        if (editorEl) editorEl.disabled = true;
         saveBtn.disabled = true;
         applyBtn.disabled = true;
         return;
@@ -79,14 +91,25 @@ async function loadConfig() {
         filenameEl.textContent = result.filename || configId;
         updateWindowTitle(result.name);
 
+        highlighted = createHighlightedEditor(editorEl, result.filename || 'config.json');
+        if (languageEl) {
+            languageEl.textContent = highlighted?.language.label || 'JSON';
+        }
+        highlighted?.editor.on('change', markValidity);
+
         const raw = JSON.stringify(result.content ?? {}, null, 2);
-        editorEl.value = raw;
+        setEditorValue(raw);
         savedRaw = raw;
         setStatus('Loaded current config.', 'info');
+        requestAnimationFrame(() => highlighted?.editor.refresh());
     } catch (error) {
         console.error('Error loading config:', error);
         setStatus(`Error: ${error.message}`, 'error');
-        editorEl.disabled = true;
+        if (highlighted?.editor) {
+            highlighted.editor.setOption('readOnly', true);
+        } else if (editorEl) {
+            editorEl.disabled = true;
+        }
         saveBtn.disabled = true;
         applyBtn.disabled = true;
     }
@@ -112,8 +135,8 @@ async function saveConfig() {
             throw new Error(result.error || `Failed to save (${response.status})`);
         }
         savedRaw = JSON.stringify(content, null, 2);
-        if (editorEl.value.trim() !== savedRaw) {
-            editorEl.value = savedRaw;
+        if (getEditorValue().trim() !== savedRaw) {
+            setEditorValue(savedRaw);
         }
         setStatus('Saved.', 'success');
         return content;
@@ -147,8 +170,8 @@ async function applyConfig() {
             throw new Error(result.error || `Failed to apply (${response.status})`);
         }
         savedRaw = JSON.stringify(content, null, 2);
-        if (editorEl.value.trim() !== savedRaw) {
-            editorEl.value = savedRaw;
+        if (getEditorValue().trim() !== savedRaw) {
+            setEditorValue(savedRaw);
         }
         notifyMainWindow(result.id || configId);
         setStatus('Saved and applied. Main UI configs reloaded.', 'success');
